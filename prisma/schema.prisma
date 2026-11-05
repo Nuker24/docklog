@@ -1,0 +1,207 @@
+// DockLog Phase 0 — hospital medical logistics domain
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  LOGISTICS_ADMIN
+  LOGISTICS_OPERATOR
+  CLINIC_SUPPLY_USER
+  AUDITOR
+}
+
+enum TempZone {
+  AMBIENT
+  REFRIGERATED
+  FROZEN
+  CONTROLLED_ROOM
+}
+
+enum CommodityClass {
+  EXPENDABLE_MEDICAL_SUPPLY
+  PHARMACY
+}
+
+enum LocationKind {
+  WAREHOUSE
+  CLINIC
+}
+
+model Hospital {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              User[]
+  warehouse          Warehouse?
+  clinics            Clinic[]
+  items              Item[]
+  lots               Lot[]
+  inventoryBalances  InventoryBalance[]
+  auditEvents        AuditEvent[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  hospitalId   String
+  username     String   @unique
+  passwordHash String
+  displayName  String
+  role         UserRole
+  clinicId     String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  clinic   Clinic?  @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  audits   AuditEvent[]
+
+  @@index([hospitalId])
+  @@index([clinicId])
+}
+
+/// One warehouse per hospital (Phase 0 constraint).
+model Warehouse {
+  id         String   @id @default(cuid())
+  hospitalId String   @unique
+  code       String
+  name       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  hospital  Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  locations Location[]
+
+  @@unique([hospitalId, code])
+}
+
+model Clinic {
+  id                   String   @id @default(cuid())
+  hospitalId           String
+  code                 String
+  name                 String
+  /// When true, logistics may push/issue expendable supply without a clinic request.
+  logisticsPushEnabled Boolean  @default(false)
+  /// Pharmacy clinic is source of supply (SOS) for drugs (C2C).
+  isPharmacySos        Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  hospital  Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  users     User[]
+  locations Location[]
+
+  @@unique([hospitalId, code])
+  @@index([hospitalId])
+}
+
+model Location {
+  id          String       @id @default(cuid())
+  hospitalId  String
+  warehouseId String?
+  clinicId    String?
+  code        String
+  name        String
+  kind        LocationKind
+  tempZone    TempZone     @default(AMBIENT)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  warehouse         Warehouse?         @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  clinic            Clinic?            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  inventoryBalances InventoryBalance[]
+
+  @@unique([hospitalId, code])
+  @@index([warehouseId])
+  @@index([clinicId])
+}
+
+model Item {
+  id             String         @id @default(cuid())
+  hospitalId     String
+  sku            String
+  name           String
+  description    String?
+  uom            String         @default("EA")
+  ndc            String?
+  upc            String?
+  commodityClass CommodityClass
+  requiresCold   Boolean        @default(false)
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  lots              Lot[]
+  inventoryBalances InventoryBalance[]
+
+  @@unique([hospitalId, sku])
+  @@index([hospitalId])
+  @@index([ndc])
+}
+
+model Lot {
+  id         String    @id @default(cuid())
+  hospitalId String
+  itemId     String
+  lotNumber  String
+  expiresOn  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  item              Item               @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  inventoryBalances InventoryBalance[]
+
+  @@unique([itemId, lotNumber])
+  @@index([hospitalId])
+}
+
+/// Inventory truth: (hospital, location, item, lot).
+model InventoryBalance {
+  id         String   @id @default(cuid())
+  hospitalId String
+  locationId String
+  itemId     String
+  lotId      String
+  quantity   Decimal  @db.Decimal(14, 3)
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  item     Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  lot      Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+
+  @@unique([hospitalId, locationId, itemId, lotId])
+  @@index([hospitalId, locationId])
+  @@index([itemId])
+}
+
+/// Append-only audit stub for Phase 0 (receive/move/issue come in Phase 1).
+model AuditEvent {
+  id         String   @id @default(cuid())
+  hospitalId String
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  actor    User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([hospitalId, createdAt])
+  @@index([entityType, entityId])
+}
