@@ -6,9 +6,9 @@ import { prisma } from "@/lib/prisma";
 
 const nav = [
   { href: "/clinic", label: "Home" },
-  { href: "/clinic/requests", label: "Requests (soon)" },
-  { href: "/clinic/on-hand", label: "On-hand (soon)" },
-  { href: "/clinic/confirm", label: "Confirm receipt (soon)" },
+  { href: "/clinic/requests", label: "Requests" },
+  { href: "/clinic/confirm", label: "Confirm receipt" },
+  { href: "/clinic/on-hand", label: "On-hand" },
 ];
 
 export default async function ClinicLayout({

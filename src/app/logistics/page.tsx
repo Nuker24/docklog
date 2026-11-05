@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -5,24 +6,34 @@ export default async function LogisticsHomePage() {
   const session = await auth();
   const hospitalId = session!.user.hospitalId;
 
-  const [locationCount, itemCount, balanceAgg] = await Promise.all([
-    prisma.location.count({
-      where: { hospitalId, kind: "WAREHOUSE" },
-    }),
-    prisma.item.count({ where: { hospitalId, isActive: true } }),
-    prisma.inventoryBalance.aggregate({
-      where: { hospitalId },
-      _sum: { quantity: true },
-    }),
-  ]);
+  const [locationCount, itemCount, openRequests, issuedTransfers, balanceAgg] =
+    await Promise.all([
+      prisma.location.count({
+        where: { hospitalId, kind: "WAREHOUSE" },
+      }),
+      prisma.item.count({ where: { hospitalId, isActive: true } }),
+      prisma.supplyRequest.count({
+        where: { hospitalId, channel: "LOGISTICS", status: "OPEN" },
+      }),
+      prisma.transfer.count({
+        where: {
+          hospitalId,
+          status: "ISSUED",
+          kind: { in: ["REQUEST_FULFILLMENT", "LOGISTICS_PUSH"] },
+        },
+      }),
+      prisma.inventoryBalance.aggregate({
+        where: { hospitalId, location: { kind: "WAREHOUSE" } },
+        _sum: { quantity: true },
+      }),
+    ]);
 
   return (
-    <div className="stub-page">
+    <div className="ops-page">
       <h1>Logistics home</h1>
       <p className="lede">
-        Central supply for {session!.user.hospitalName}. Receiving, putaway, and
-        clinic issue workflows land in Phase 1 — this shell is the Phase 0 entry
-        point.
+        Central supply for {session!.user.hospitalName}. Phase 1 MVP: receive →
+        on-hand → fulfill clinic requests or push → clinic confirms.
       </p>
 
       <dl className="stub-stats">
@@ -35,22 +46,35 @@ export default async function LogisticsHomePage() {
           <dd>{itemCount}</dd>
         </div>
         <div>
-          <dt>Units on hand (all lots)</dt>
+          <dt>Units on hand</dt>
           <dd>{Number(balanceAgg._sum.quantity ?? 0)}</dd>
+        </div>
+        <div>
+          <dt>Open requests</dt>
+          <dd>{openRequests}</dd>
+        </div>
+        <div>
+          <dt>Awaiting clinic confirm</dt>
+          <dd>{issuedTransfers}</dd>
         </div>
       </dl>
 
-      <section className="stub-note">
-        <h2>Phase 0 scope</h2>
-        <ul>
-          <li>One warehouse per hospital with temp-zone locations</li>
-          <li>Item master includes expendable medical supply and pharmacy (NDC)</li>
+      <section className="quick-links">
+        <h2>Workflow</h2>
+        <ol>
           <li>
-            Logistics issues expendable supply to clinics; Pharmacy SOS handles
-            drug C2C
+            <Link href="/logistics/receive">Receive inbound</Link> to a warehouse
+            location (temp-zone checked).
           </li>
-          <li>Keyboard entry only — no barcode hardware yet</li>
-        </ul>
+          <li>
+            Review <Link href="/logistics/on-hand">warehouse on-hand</Link>.
+          </li>
+          <li>
+            <Link href="/logistics/issue">Issue / fulfill</Link> open requests or
+            push to push-enabled clinics (expendable only; Pharmacy may also
+            receive pharmacy stock from logistics).
+          </li>
+        </ol>
       </section>
     </div>
   );

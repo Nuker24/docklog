@@ -7,6 +7,10 @@ async function main() {
   const passwordHash = await hash("docklog123", 10);
 
   await prisma.auditEvent.deleteMany();
+  await prisma.transferLine.deleteMany();
+  await prisma.transfer.deleteMany();
+  await prisma.supplyRequestLine.deleteMany();
+  await prisma.supplyRequest.deleteMany();
   await prisma.inventoryBalance.deleteMany();
   await prisma.lot.deleteMany();
   await prisma.item.deleteMany();
@@ -250,6 +254,31 @@ async function main() {
   const ambientBin = warehouseLocations.find((l) => l.code === "A-12-04")!;
   const coldRoom = warehouseLocations.find((l) => l.code === "COLD-01")!;
 
+  const pharmCab = await prisma.location.findFirstOrThrow({
+    where: { hospitalId: hospital.id, code: "PHARM-CAB-01" },
+  });
+  const pharmRef = await prisma.location.findFirstOrThrow({
+    where: { hospitalId: hospital.id, code: "PHARM-REF-01" },
+  });
+
+  const amoxLot = await prisma.lot.create({
+    data: {
+      hospitalId: hospital.id,
+      itemId: amoxItem.id,
+      lotNumber: "AMOX-2026-014",
+      expiresOn: new Date("2027-06-30"),
+    },
+  });
+
+  const syringeLot = await prisma.lot.create({
+    data: {
+      hospitalId: hospital.id,
+      itemId: syringeItem.id,
+      lotNumber: "SYR-2026-220",
+      expiresOn: new Date("2029-01-01"),
+    },
+  });
+
   await prisma.inventoryBalance.createMany({
     data: [
       {
@@ -268,17 +297,35 @@ async function main() {
       },
       {
         hospitalId: hospital.id,
+        locationId: ambientBin.id,
+        itemId: syringeItem.id,
+        lotId: syringeLot.id,
+        quantity: 200,
+      },
+      {
+        hospitalId: hospital.id,
         locationId: coldRoom.id,
         itemId: insulinItem.id,
         lotId: insulinLot.id,
         quantity: 24,
       },
+      // Pharmacy SOS stock for C2C drug fulfill demos
+      {
+        hospitalId: hospital.id,
+        locationId: pharmRef.id,
+        itemId: insulinItem.id,
+        lotId: insulinLot.id,
+        quantity: 12,
+      },
+      {
+        hospitalId: hospital.id,
+        locationId: pharmCab.id,
+        itemId: amoxItem.id,
+        lotId: amoxLot.id,
+        quantity: 40,
+      },
     ],
   });
-
-  // unused demo SKUs kept for catalog
-  void syringeItem;
-  void amoxItem;
 
   const logisticsUser = await prisma.user.create({
     data: {
@@ -329,7 +376,7 @@ async function main() {
       action: "SEED",
       entityType: "Hospital",
       entityId: hospital.id,
-      summary: "Phase 0 demo seed applied",
+      summary: "Phase 1 demo seed applied",
       metadata: {
         users: [
           logisticsUser.username,
@@ -348,6 +395,7 @@ async function main() {
   console.log("  logistics.admin    — Logistics admin");
   console.log("  clinic.ortho      — Orthopedics clinic user");
   console.log("  clinic.pharmacy   — Pharmacy clinic user (SOS)");
+  console.log("MVP demo: receive → request/push → issue → clinic confirm.");
 }
 
 main()

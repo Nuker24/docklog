@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -9,20 +10,45 @@ export default async function ClinicHomePage() {
     ? await prisma.clinic.findUnique({
         where: { id: clinicId },
         include: {
-          locations: true,
           _count: { select: { locations: true } },
         },
       })
     : null;
 
+  const [openRequests, awaitingConfirm, onHand] = clinicId
+    ? await Promise.all([
+        prisma.supplyRequest.count({
+          where: {
+            hospitalId: session!.user.hospitalId,
+            requestingClinicId: clinicId,
+            status: "OPEN",
+          },
+        }),
+        prisma.transfer.count({
+          where: {
+            hospitalId: session!.user.hospitalId,
+            toClinicId: clinicId,
+            status: "ISSUED",
+          },
+        }),
+        prisma.inventoryBalance.aggregate({
+          where: {
+            hospitalId: session!.user.hospitalId,
+            location: { clinicId },
+          },
+          _sum: { quantity: true },
+        }),
+      ])
+    : [0, 0, { _sum: { quantity: null } }];
+
   return (
-    <div className="stub-page">
+    <div className="ops-page">
       <h1>Clinic home</h1>
       <p className="lede">
         {clinic
           ? `${clinic.name} supply workspace at ${session!.user.hospitalName}.`
           : `Clinic module for ${session!.user.hospitalName}.`}{" "}
-        Request and confirm flows arrive in Phase 1.
+        Request supply, confirm receipts, and view clinic on-hand.
       </p>
 
       {clinic && (
@@ -32,8 +58,16 @@ export default async function ClinicHomePage() {
             <dd>{clinic.code}</dd>
           </div>
           <div>
-            <dt>Storage locations</dt>
-            <dd>{clinic._count.locations}</dd>
+            <dt>Open requests</dt>
+            <dd>{openRequests}</dd>
+          </div>
+          <div>
+            <dt>Awaiting confirm</dt>
+            <dd>{awaitingConfirm}</dd>
+          </div>
+          <div>
+            <dt>Units on hand</dt>
+            <dd>{Number(onHand._sum.quantity ?? 0)}</dd>
           </div>
           <div>
             <dt>Logistics push</dt>
@@ -41,24 +75,27 @@ export default async function ClinicHomePage() {
           </div>
           <div>
             <dt>Pharmacy SOS</dt>
-            <dd>{clinic.isPharmacySos ? "Yes — drug source of supply" : "No"}</dd>
+            <dd>{clinic.isPharmacySos ? "Yes" : "No"}</dd>
           </div>
         </dl>
       )}
 
-      <section className="stub-note">
-        <h2>Phase 0 scope</h2>
-        <ul>
-          <li>Clinic users are scoped to their assigned clinic</li>
+      <section className="quick-links">
+        <h2>Workflow</h2>
+        <ol>
           <li>
-            Expendable medical supply comes from logistics; drugs come from
-            Pharmacy SOS (C2C)
+            <Link href="/clinic/requests">Create a supply request</Link> —
+            expendable → logistics; drugs → Pharmacy SOS.
           </li>
           <li>
-            Per-clinic <code>logisticsPushEnabled</code> toggle controls push vs
-            request-only
+            When logistics/Pharmacy issues,{" "}
+            <Link href="/clinic/confirm">confirm receipt</Link> into a clinic
+            location.
           </li>
-        </ul>
+          <li>
+            Check <Link href="/clinic/on-hand">clinic on-hand</Link>.
+          </li>
+        </ol>
       </section>
     </div>
   );
