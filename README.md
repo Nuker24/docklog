@@ -39,7 +39,9 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) — you will be redirected to sign-in.
 
-### Demo users (password for all: `docklog123`)
+### Local demo users (development only)
+
+`npm run db:seed` creates local demo accounts. Sign-in page shows username/password hints only when `NODE_ENV=development` or `DEMO_LOGIN_HINTS=true`. **Do not enable demo hints on hosted / production.**
 
 | Username | Role | Module |
 |----------|------|--------|
@@ -47,6 +49,8 @@ Open [http://localhost:3000](http://localhost:3000) — you will be redirected t
 | `logistics.admin` | Logistics admin | Logistics |
 | `clinic.ortho` | Clinic supply (Orthopedics) | Clinic |
 | `clinic.pharmacy` | Clinic supply (Pharmacy SOS) | Clinic |
+
+Password for all local seed users: `docklog123` (local/dev only; never advertised on hosted sign-in).
 
 ## Phase 1 demo path
 
@@ -61,7 +65,7 @@ Rules enforced in code: logistics issues expendable medical supply to clinics; l
 
 Item fields on **Receive**, **Requests**, and logistics **Issue (push)** use a keyboard typeahead (search SKU / name / NDC / UPC) so large catalogs stay usable.
 
-## Phase 2 demo path (`logistics.ops` / `docklog123`)
+## Phase 2 demo path (local: `logistics.ops`)
 
 1. **Short/over receive** → Receive → set Expected qty ≠ Actual qty → enter variance note → post (audit `RECEIVE_SHORT` / `RECEIVE_OVER`).
 2. **FEFO picks** → Issue → search gloves → lot list is earliest-expiry first (`GLV-NEAR-EXP` before longer-dated lot) with near-expiry warning.

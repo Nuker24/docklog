@@ -42,7 +42,9 @@ export async function createRequestAction(
 
 export async function cancelRequestAction(formData: FormData): Promise<void> {
   const user = await requireSession();
-  if (!user.clinicId) return;
+  if (!canAccessClinic(user.role) || user.role === "AUDITOR" || !user.clinicId) {
+    return;
+  }
   await cancelSupplyRequest({
     hospitalId: user.hospitalId,
     requestId: String(formData.get("requestId") ?? ""),
@@ -58,8 +60,8 @@ export async function pharmacyFulfillAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const user = await requireSession();
-  if (!canAccessClinic(user.role) || !user.clinicId) {
-    return fail("Pharmacy SOS fulfill requires a clinic assignment.");
+  if (!canAccessClinic(user.role) || user.role === "AUDITOR" || !user.clinicId) {
+    return fail("You do not have permission to fulfill Pharmacy SOS requests.");
   }
 
   try {

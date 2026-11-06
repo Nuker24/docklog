@@ -10,7 +10,16 @@ export const metadata: Metadata = {
     "Sign in to DockLog clinical supply warehouse management for hospitals and clinics.",
 };
 
+function showDemoLoginHints() {
+  return (
+    process.env.DEMO_LOGIN_HINTS === "true" ||
+    process.env.NODE_ENV === "development"
+  );
+}
+
 export default function SignInPage() {
+  const demoHints = showDemoLoginHints();
+
   return (
     <div className="signin-root">
       <div className="stage">
@@ -29,10 +38,12 @@ export default function SignInPage() {
             <SignInForm />
           </Suspense>
 
-          <p className="demo-hint">
-            Demo: logistics.ops / clinic.ortho / clinic.pharmacy — password
-            docklog123
-          </p>
+          {demoHints && (
+            <p className="demo-hint">
+              Local demo: logistics.ops / clinic.ortho / clinic.pharmacy —
+              password docklog123
+            </p>
+          )}
           <p className="foot">DockLog WMS · Hospital &amp; clinic logistics</p>
         </main>
       </div>

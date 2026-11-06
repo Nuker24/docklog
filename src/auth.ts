@@ -4,6 +4,11 @@ import { compare } from "bcryptjs";
 import type { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { defaultModuleForRole } from "@/lib/roles";
+import {
+  checkLoginRateLimit,
+  clearLoginFailures,
+  recordLoginFailure,
+} from "@/lib/login-rate-limit";
 
 declare module "next-auth" {
   interface User {
@@ -63,19 +68,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
+        const rateKey = username.toLowerCase();
+        if (checkLoginRateLimit(rateKey)) {
+          // Deny while locked (generic failure to the client).
+          return null;
+        }
+
         const user = await prisma.user.findUnique({
           where: { username },
           include: { hospital: true },
         });
 
         if (!user || !user.isActive) {
+          recordLoginFailure(rateKey);
           return null;
         }
 
         const valid = await compare(password, user.passwordHash);
         if (!valid) {
+          recordLoginFailure(rateKey);
           return null;
         }
+
+        clearLoginFailures(rateKey);
 
         return {
           id: user.id,
