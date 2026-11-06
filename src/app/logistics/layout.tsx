@@ -8,6 +8,8 @@ const nav = [
   { href: "/logistics/receive", label: "Receive" },
   { href: "/logistics/on-hand", label: "On-hand" },
   { href: "/logistics/issue", label: "Issue / fulfill" },
+  { href: "/logistics/par", label: "Par / replenish" },
+  { href: "/logistics/cycle-count", label: "Cycle count" },
 ];
 
 export default async function LogisticsLayout({

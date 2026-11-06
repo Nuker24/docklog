@@ -20,6 +20,9 @@ export async function receiveAction(
   const lotNumber = String(formData.get("lotNumber") ?? "");
   const expiresOn = String(formData.get("expiresOn") ?? "") || null;
   const quantity = Number(formData.get("quantity"));
+  const expectedRaw = String(formData.get("expectedQuantity") ?? "").trim();
+  const expectedQuantity = expectedRaw === "" ? null : Number(expectedRaw);
+  const varianceNote = String(formData.get("varianceNote") ?? "") || null;
   const acknowledgeTempWarning = formData.get("acknowledgeTempWarning") === "on";
 
   try {
@@ -31,13 +34,23 @@ export async function receiveAction(
       lotNumber,
       expiresOn,
       quantity,
+      expectedQuantity,
+      varianceNote,
       acknowledgeTempWarning,
     });
     revalidatePath("/logistics");
     revalidatePath("/logistics/receive");
     revalidatePath("/logistics/on-hand");
+
+    const varianceMsg =
+      result.varianceKind === "SHORT"
+        ? ` Short vs expected ${result.expected} (audited).`
+        : result.varianceKind === "OVER"
+          ? ` Over vs expected ${result.expected} (audited).`
+          : "";
+
     return ok(
-      `Received ${quantity} ${result.item.uom} of ${result.item.sku} lot ${result.lot.lotNumber} into ${result.location.code}.`,
+      `Received ${quantity} ${result.item.uom} of ${result.item.sku} lot ${result.lot.lotNumber} into ${result.location.code}.${varianceMsg}`,
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : "Receive failed.";

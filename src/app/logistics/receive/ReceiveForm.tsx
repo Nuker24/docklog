@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { receiveAction } from "./actions";
 import { Flash } from "@/components/forms/Flash";
 import { ItemCombobox } from "@/components/forms/ItemCombobox";
@@ -24,6 +24,8 @@ export function ReceiveForm({
   const [showAck, setShowAck] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState("");
   const [selectedLocId, setSelectedLocId] = useState(locations[0]?.id ?? "");
+  const [expectedQty, setExpectedQty] = useState("");
+  const [actualQty, setActualQty] = useState("1");
 
   useEffect(() => {
     if (state?.ok === false && state.needsTempAck) {
@@ -36,6 +38,15 @@ export function ReceiveForm({
 
   const selectedItem = items.find((i) => i.id === selectedItemId);
   const selectedLoc = locations.find((l) => l.id === selectedLocId);
+
+  const variance = useMemo(() => {
+    const exp = expectedQty.trim() === "" ? null : Number(expectedQty);
+    const act = Number(actualQty);
+    if (exp == null || Number.isNaN(exp) || Number.isNaN(act)) return null;
+    return act - exp;
+  }, [expectedQty, actualQty]);
+
+  const needsVarianceNote = variance != null && variance !== 0;
 
   return (
     <form
@@ -85,7 +96,23 @@ export function ReceiveForm({
 
       <div className="field-row">
         <div className="field">
-          <label htmlFor="quantity">Quantity</label>
+          <label htmlFor="expectedQuantity">Expected qty (optional)</label>
+          <input
+            id="expectedQuantity"
+            name="expectedQuantity"
+            type="number"
+            min="0.001"
+            step="any"
+            value={expectedQty}
+            onChange={(e) => setExpectedQty(e.target.value)}
+            placeholder="ASN / packing slip"
+          />
+          <p className="field-hint">
+            Leave blank for ad-hoc receive. If set, short/over requires a note.
+          </p>
+        </div>
+        <div className="field">
+          <label htmlFor="quantity">Actual qty received</label>
           <input
             id="quantity"
             name="quantity"
@@ -93,28 +120,59 @@ export function ReceiveForm({
             min="0.001"
             step="any"
             required
-            defaultValue={1}
+            value={actualQty}
+            onChange={(e) => setActualQty(e.target.value)}
           />
         </div>
+      </div>
+
+      {variance != null && (
+        <p
+          className={`field-hint${needsVarianceNote ? (variance < 0 ? " cold" : "") : ""}`}
+          style={
+            needsVarianceNote
+              ? { color: variance < 0 ? "var(--danger)" : "var(--teal-deep)" }
+              : undefined
+          }
+        >
+          {variance === 0
+            ? "Actual matches expected."
+            : variance < 0
+              ? `Short by ${Math.abs(variance)} — document reason below.`
+              : `Over by ${variance} — document reason below.`}
+        </p>
+      )}
+
+      {needsVarianceNote && (
         <div className="field">
-          <label htmlFor="locationId">Warehouse location</label>
-          <select
-            id="locationId"
-            name="locationId"
+          <label htmlFor="varianceNote">Variance note</label>
+          <input
+            id="varianceNote"
+            name="varianceNote"
             required
-            value={selectedLocId}
-            onChange={(e) => setSelectedLocId(e.target.value)}
-          >
-            {locations.map((loc) => (
-              <option key={loc.id} value={loc.id}>
-                {loc.label}
-              </option>
-            ))}
-          </select>
-          {selectedLoc?.tempZone && (
-            <p className="field-hint">Zone: {selectedLoc.tempZone}</p>
-          )}
+            placeholder="e.g. carton damaged / vendor short-shipped"
+          />
         </div>
+      )}
+
+      <div className="field">
+        <label htmlFor="locationId">Warehouse location</label>
+        <select
+          id="locationId"
+          name="locationId"
+          required
+          value={selectedLocId}
+          onChange={(e) => setSelectedLocId(e.target.value)}
+        >
+          {locations.map((loc) => (
+            <option key={loc.id} value={loc.id}>
+              {loc.label}
+            </option>
+          ))}
+        </select>
+        {selectedLoc?.tempZone && (
+          <p className="field-hint">Zone: {selectedLoc.tempZone}</p>
+        )}
       </div>
 
       {showAck && (

@@ -1,4 +1,4 @@
-// DockLog Phase 1 — hospital medical logistics domain + MVP workflows
+// DockLog Phase 2 — ops depth (par, FEFO picks, receive variance, cycle count)
 
 generator client {
   provider = "prisma-client-js"
@@ -73,6 +73,7 @@ model Hospital {
   auditEvents       AuditEvent[]
   supplyRequests    SupplyRequest[]
   transfers         Transfer[]
+  clinicParLevels   ClinicParLevel[]
 }
 
 model User {
@@ -130,6 +131,7 @@ model Clinic {
   locations        Location[]
   supplyRequests   SupplyRequest[] @relation("RequestingClinic")
   inboundTransfers Transfer[]      @relation("TransferToClinic")
+  parLevels        ClinicParLevel[]
 
   @@unique([hospitalId, code])
   @@index([hospitalId])
@@ -178,10 +180,30 @@ model Item {
   inventoryBalances InventoryBalance[]
   requestLines      SupplyRequestLine[]
   transferLines     TransferLine[]
+  clinicParLevels   ClinicParLevel[]
 
   @@unique([hospitalId, sku])
   @@index([hospitalId])
   @@index([ndc])
+}
+
+/// Target on-hand at a clinic for an item (expendable replenishment).
+model ClinicParLevel {
+  id         String   @id @default(cuid())
+  hospitalId String
+  clinicId   String
+  itemId     String
+  parQty     Decimal  @db.Decimal(14, 3)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  clinic   Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  item     Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, itemId])
+  @@index([hospitalId])
+  @@index([clinicId])
 }
 
 model Lot {

@@ -6,6 +6,12 @@ import { Flash } from "@/components/forms/Flash";
 import { ItemCombobox } from "@/components/forms/ItemCombobox";
 import type { ActionResult } from "@/lib/action-result";
 import type { SearchableItem } from "@/lib/item-search";
+import {
+  formatExpiryLabel,
+  isExpired,
+  isNearExpiry,
+  sortStockByFefo,
+} from "@/lib/fefo";
 
 type ClinicOpt = {
   id: string;
@@ -34,6 +40,9 @@ type StockOpt = {
   name: string;
   ndc?: string | null;
   upc?: string | null;
+  expiresOn: string | null;
+  lotNumber: string;
+  locationCode: string;
 };
 
 export function IssueForm({
@@ -41,24 +50,33 @@ export function IssueForm({
   requests,
   stock,
   catalog,
+  suggestedPush,
 }: {
   clinics: ClinicOpt[];
   requests: RequestOpt[];
   stock: StockOpt[];
   catalog: SearchableItem[];
+  suggestedPush?: {
+    clinicId: string;
+    itemId: string;
+    quantity: number;
+  } | null;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     issueAction,
     null,
   );
   const [mode, setMode] = useState<"request" | "push">(
-    requests.length ? "request" : "push",
+    suggestedPush ? "push" : requests.length ? "request" : "push",
   );
   const [requestId, setRequestId] = useState(requests[0]?.id ?? "");
   const [clinicId, setClinicId] = useState(
-    clinics.find((c) => c.pushEnabled)?.id ?? clinics[0]?.id ?? "",
+    suggestedPush?.clinicId ??
+      clinics.find((c) => c.pushEnabled)?.id ??
+      clinics[0]?.id ??
+      "",
   );
-  const [pushItemId, setPushItemId] = useState("");
+  const [pushItemId, setPushItemId] = useState(suggestedPush?.itemId ?? "");
   const [stockKey, setStockKey] = useState("");
 
   const selectedRequest = requests.find((r) => r.id === requestId);
@@ -76,13 +94,14 @@ export function IssueForm({
   const stockForItem = useMemo(() => {
     const itemId =
       mode === "request" ? selectedRequest?.itemId : pushItemId || undefined;
-    return stock.filter((s) => {
+    const filtered = stock.filter((s) => {
       if (itemId && s.itemId !== itemId) return false;
       if (mode === "push" && clinic && !clinic.isPharmacySos) {
         return s.commodityClass === "EXPENDABLE_MEDICAL_SUPPLY";
       }
       return true;
     });
+    return sortStockByFefo(filtered);
   }, [stock, mode, selectedRequest, pushItemId, clinic]);
 
   useEffect(() => {
@@ -93,9 +112,7 @@ export function IssueForm({
     stockForItem.find((s) => s.key === stockKey) ?? stockForItem[0];
 
   const pushClinics = clinics.filter((c) => c.pushEnabled);
-
-  // Request-mode stock search: filter stock lines by typed query via ItemCombobox
-  // isn't needed — item is fixed. For request mode with many lots, keep select.
+  const fefoHint = stockForItem[0];
 
   return (
     <form action={formAction} className="ops-form">
@@ -178,7 +195,7 @@ export function IssueForm({
               onChange={(id) => setPushItemId(id)}
             />
             <p className="field-hint">
-              Search by SKU, name, NDC, or UPC, then pick lot/location below.
+              Search by SKU, name, NDC, or UPC, then pick lot/location below (FEFO order).
             </p>
           </div>
         </>
@@ -189,7 +206,7 @@ export function IssueForm({
       )}
 
       <div className="field">
-        <label htmlFor="stockKey">Lot / warehouse location</label>
+        <label htmlFor="stockKey">Lot / warehouse location (FEFO)</label>
         <select
           id="stockKey"
           value={selectedStock?.key ?? ""}
@@ -199,10 +216,29 @@ export function IssueForm({
         >
           {stockForItem.map((s) => (
             <option key={s.key} value={s.key}>
-              {s.label}
+              {s.sku} · lot {s.lotNumber} · exp {formatExpiryLabel(s.expiresOn)} ·{" "}
+              {s.locationCode} · {s.qty}
             </option>
           ))}
         </select>
+        {fefoHint && (
+          <p className="field-hint">
+            Suggested FEFO pick: lot {fefoHint.lotNumber} (exp{" "}
+            {formatExpiryLabel(fefoHint.expiresOn)}) at {fefoHint.locationCode}.
+          </p>
+        )}
+        {selectedStock && isExpired(selectedStock.expiresOn) && (
+          <p className="field-hint" style={{ color: "var(--danger)" }}>
+            Selected lot is expired — prefer a later FEFO lot if available.
+          </p>
+        )}
+        {selectedStock &&
+          !isExpired(selectedStock.expiresOn) &&
+          isNearExpiry(selectedStock.expiresOn) && (
+            <p className="field-hint" style={{ color: "#9a3412" }}>
+              Near-expiry lot — issue soon or confirm intentional pick.
+            </p>
+          )}
         {mode === "push" && !pushItemId && (
           <p className="field-hint">Select an item first.</p>
         )}
@@ -236,11 +272,13 @@ export function IssueForm({
             min="0.001"
             step="any"
             required
-            key={`${selectedStock?.key ?? "none"}-${mode}-${requestId}`}
+            key={`${selectedStock?.key ?? "none"}-${mode}-${requestId}-${suggestedPush?.quantity ?? ""}`}
             defaultValue={
-              mode === "request" && selectedRequest
-                ? Math.min(selectedRequest.remaining, selectedStock?.qty ?? 1)
-                : 1
+              mode === "push" && suggestedPush && pushItemId === suggestedPush.itemId
+                ? Math.min(suggestedPush.quantity, selectedStock?.qty ?? suggestedPush.quantity)
+                : mode === "request" && selectedRequest
+                  ? Math.min(selectedRequest.remaining, selectedStock?.qty ?? 1)
+                  : 1
             }
             max={selectedStock?.qty}
           />
