@@ -2,7 +2,7 @@
 
 Clinical supply warehouse management for hospitals and clinics. Central logistics stocks, holds, and replenishes clinics — with Pharmacy as source of supply (SOS) for drugs.
 
-This repository includes Phase 0–1 foundations plus **Phase 2 ops depth**: short/over receive, FEFO picks, par / replenishment, warehouse cycle count, printable packing slips, clinic↔clinic transfers, and lightweight PO/ASN receiving.
+This repository includes Phase 0–2 foundations plus a **Phase 3 compliance slice**: recall campaigns (lot hold + clinic return tasks) and a filterable audit log with CSV export.
 
 ## Stack
 
@@ -71,6 +71,13 @@ Item fields on **Receive**, **Requests**, and logistics **Issue (push)** use a k
 6. **Print slip** → Pick lists → Print slip (or Confirm receipt → Print slip).
 7. **Clinic transfer** (`clinic.ortho`) → Transfer out expendable to Med-Surg → Med-Surg/Ortho confirm path on destination; drugs only from `clinic.pharmacy`.
 
+## Phase 3 demo path
+
+1. **Open recall** (`logistics.ops`) → Recalls → lot `GZ-2025-118` (gauze at Ortho cart + warehouse) → reason → Open recall & hold lot.
+2. **Hold enforced** → Issue that gauze lot fails while on hold.
+3. **Clinic return** (`clinic.ortho`) → Recalls → Mark returned → logistics Recalls → Confirm return into warehouse bin.
+4. **Audit** → Audit → filter by action / date / search → Export CSV.
+
 ## Environment variables
 
 | Variable | Purpose |
@@ -101,13 +108,13 @@ For **Neon** or **Supabase**, paste the pooled/direct Postgres URL into `DATABAS
 - **Clinic** — customer of the warehouse; `logisticsPushEnabled`; `isPharmacySos` for Pharmacy drug SOS
 - **User** — hospital-scoped roles (logistics admin/operator, clinic supply, auditor)
 - **Item** — SKU, optional NDC/UPC, commodity class (`EXPENDABLE_MEDICAL_SUPPLY` \| `PHARMACY`)
-- **Lot** + **InventoryBalance** — ledger key `(hospital, location, item, lot)`
+- **Lot** (`onHold`) + **InventoryBalance** — ledger key `(hospital, location, item, lot)`
 - **SupplyRequest** + lines — clinic requests; channel `LOGISTICS` or `PHARMACY_SOS`
-- **Transfer** + lines — issue/push/C2C; `ISSUED` then `CONFIRMED` (clinic on-hand)
+- **Transfer** + lines — issue/push/C2C/clinic transfer; `ISSUED` then `CONFIRMED`
 - **ClinicParLevel** — per clinic+item par qty for replenishment
 - **InboundShipment** + lines — lightweight PO/ASN expected receipts
-- **Transfer** kinds include `CLINIC_TRANSFER`; printable slip at `/print/transfer/[id]`
-- **AuditEvent** — receive (incl. short/over) / request / issue / confirm / cycle count / inbound
+- **RecallCampaign** + **RecallReturnTask** — lot hold + clinic return / confirm
+- **AuditEvent** — append-only; filterable UI + CSV at `/logistics/audit`
 
 ## Auth choice
 
@@ -124,6 +131,6 @@ For **Neon** or **Supabase**, paste the pooled/direct Postgres URL into `DATABAS
 
 - SSO, MFA, barcode hardware, temperature logging/excursions
 - Full PO/ASN EDI / vendor integrations (lightweight PO headers only)
-- Clinic cycle count (warehouse only in this Phase 2 slice)
-- Multi-warehouse / multi-hospital
+- ERP/MMIS, EHR hooks, multi-warehouse / multi-hospital
+- Full DEA controlled-substance workflow beyond Pharmacy SOS rules
 - Live Vercel deploy from this PR

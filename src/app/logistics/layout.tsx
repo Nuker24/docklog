@@ -12,6 +12,8 @@ const nav = [
   { href: "/logistics/transfers", label: "Pick lists" },
   { href: "/logistics/par", label: "Par / replenish" },
   { href: "/logistics/cycle-count", label: "Cycle count" },
+  { href: "/logistics/recalls", label: "Recalls" },
+  { href: "/logistics/audit", label: "Audit" },
 ];
 
 export default async function LogisticsLayout({

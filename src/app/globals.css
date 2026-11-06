@@ -562,6 +562,33 @@ a {
   color: var(--danger);
 }
 
+.status-warn {
+  background: rgba(196, 130, 14, 0.14);
+  color: #8a5a00;
+}
+
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.inline-form select,
+.inline-form input[type="number"] {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.4rem;
+  max-width: 11rem;
+}
+
+.filter-form .filter-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
 /* —— Item typeahead / combobox —— */
 .item-combobox {
   position: relative;

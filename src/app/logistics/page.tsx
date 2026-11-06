@@ -40,8 +40,8 @@ export default async function LogisticsHomePage() {
     <div className="ops-page">
       <h1>Logistics home</h1>
       <p className="lede">
-        Central supply for {session!.user.hospitalName}. Phase 2 ops: receive with
-        short/over variance, FEFO picks, par replenishment, warehouse cycle count.
+        Central supply for {session!.user.hospitalName}. Phase 3 adds recall
+        campaigns and a filterable audit export alongside Phase 2 ops depth.
       </p>
 
       <dl className="stub-stats">

@@ -6,6 +6,7 @@ import {
   clinicMayTransferItem,
   logisticsMayIssueItemToClinic,
 } from "@/lib/commodity-rules";
+import { assertLotNotOnHold } from "@/lib/recalls";
 
 export type IssueLineInput = {
   itemId: string;
@@ -178,6 +179,7 @@ export async function issueTransfer(input: {
       },
     });
     if (!lot) throw new Error("Lot does not match item.");
+    await assertLotNotOnHold(input.hospitalId, line.lotId);
     await assertSourceStock(input.hospitalId, line);
   }
 

@@ -7,6 +7,8 @@ async function main() {
   const passwordHash = await hash("docklog123", 10);
 
   await prisma.auditEvent.deleteMany();
+  await prisma.recallReturnTask.deleteMany();
+  await prisma.recallCampaign.deleteMany();
   await prisma.transferLine.deleteMany();
   await prisma.transfer.deleteMany();
   await prisma.supplyRequestLine.deleteMany();
@@ -461,7 +463,7 @@ async function main() {
       action: "SEED",
       entityType: "Hospital",
       entityId: hospital.id,
-      summary: "Phase 2b demo seed (pars, near-expiry, sample PO)",
+      summary: "Phase 3 demo seed (pars, near-expiry, sample PO — ready for recall demo on GZ lot)",
       metadata: {
         users: [
           logisticsUser.username,
@@ -481,7 +483,7 @@ async function main() {
   console.log("  clinic.ortho      — Orthopedics clinic user");
   console.log("  clinic.pharmacy   — Pharmacy clinic user (SOS)");
   console.log("MVP demo: receive → request/push → issue → clinic confirm.");
-  console.log("Phase 2: short/over, FEFO, par, cycle count, PO/ASN, C2C transfer, print slips.");
+  console.log("Phase 3: recalls + audit export (gauze lot at Ortho for return demo).");
 }
 
 main()
