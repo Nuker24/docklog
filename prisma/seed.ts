@@ -11,6 +11,7 @@ async function main() {
   await prisma.transfer.deleteMany();
   await prisma.supplyRequestLine.deleteMany();
   await prisma.supplyRequest.deleteMany();
+  await prisma.clinicParLevel.deleteMany();
   await prisma.inventoryBalance.deleteMany();
   await prisma.lot.deleteMany();
   await prisma.item.deleteMany();
@@ -233,6 +234,18 @@ async function main() {
     },
   });
 
+  // Near-expiry lot for FEFO / near-expiry warning demos (~45 days out)
+  const nearExpiry = new Date();
+  nearExpiry.setUTCDate(nearExpiry.getUTCDate() + 45);
+  const gloveLotNear = await prisma.lot.create({
+    data: {
+      hospitalId: hospital.id,
+      itemId: gloveItem.id,
+      lotNumber: "GLV-NEAR-EXP",
+      expiresOn: nearExpiry,
+    },
+  });
+
   const gauzeLot = await prisma.lot.create({
     data: {
       hospitalId: hospital.id,
@@ -279,6 +292,10 @@ async function main() {
     },
   });
 
+  const orthoCart = await prisma.location.findFirstOrThrow({
+    where: { hospitalId: hospital.id, code: "ORTHO-CART-01" },
+  });
+
   await prisma.inventoryBalance.createMany({
     data: [
       {
@@ -287,6 +304,13 @@ async function main() {
         itemId: gloveItem.id,
         lotId: gloveLot.id,
         quantity: 48,
+      },
+      {
+        hospitalId: hospital.id,
+        locationId: ambientBin.id,
+        itemId: gloveItem.id,
+        lotId: gloveLotNear.id,
+        quantity: 10,
       },
       {
         hospitalId: hospital.id,
@@ -323,6 +347,43 @@ async function main() {
         itemId: amoxItem.id,
         lotId: amoxLot.id,
         quantity: 40,
+      },
+      // Ortho has a little gauze — still below par (seeded below)
+      {
+        hospitalId: hospital.id,
+        locationId: orthoCart.id,
+        itemId: gauzeItem.id,
+        lotId: gauzeLot.id,
+        quantity: 4,
+      },
+    ],
+  });
+
+  await prisma.clinicParLevel.createMany({
+    data: [
+      {
+        hospitalId: hospital.id,
+        clinicId: orthoClinic.id,
+        itemId: gloveItem.id,
+        parQty: 20,
+      },
+      {
+        hospitalId: hospital.id,
+        clinicId: orthoClinic.id,
+        itemId: gauzeItem.id,
+        parQty: 30,
+      },
+      {
+        hospitalId: hospital.id,
+        clinicId: medSurgClinic.id,
+        itemId: gloveItem.id,
+        parQty: 15,
+      },
+      {
+        hospitalId: hospital.id,
+        clinicId: pharmacy.id,
+        itemId: syringeItem.id,
+        parQty: 50,
       },
     ],
   });
@@ -376,7 +437,7 @@ async function main() {
       action: "SEED",
       entityType: "Hospital",
       entityId: hospital.id,
-      summary: "Phase 1 demo seed applied",
+      summary: "Phase 2 demo seed applied (pars + near-expiry lot)",
       metadata: {
         users: [
           logisticsUser.username,
@@ -396,6 +457,7 @@ async function main() {
   console.log("  clinic.ortho      — Orthopedics clinic user");
   console.log("  clinic.pharmacy   — Pharmacy clinic user (SOS)");
   console.log("MVP demo: receive → request/push → issue → clinic confirm.");
+  console.log("Phase 2: short/over receive, FEFO picks, par page, cycle count.");
 }
 
 main()

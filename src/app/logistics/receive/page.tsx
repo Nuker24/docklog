@@ -22,8 +22,9 @@ export default async function LogisticsReceivePage() {
       <h1>Receive inbound</h1>
       <p className="lede">
         Ad-hoc receive to a warehouse location (receive-to-bin). Search the item
-        master by SKU, name, NDC, or UPC — keyboard entry, no barcode hardware.
-        Cold-chain items are blocked from ambient bins.
+        master by SKU, name, NDC, or UPC. Optional expected qty captures short/over
+        variance with an audit note when actual differs. Cold-chain items are
+        blocked from ambient bins.
       </p>
 
       <ReceiveForm

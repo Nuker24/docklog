@@ -2,7 +2,7 @@
 
 Clinical supply warehouse management for hospitals and clinics. Central logistics stocks, holds, and replenishes clinics — with Pharmacy as source of supply (SOS) for drugs.
 
-This repository includes **Phase 0 foundations** plus the **Phase 1 MVP vertical slice**: receive → warehouse on-hand → clinic request or logistics push → issue/transfer → clinic confirm → clinic on-hand.
+This repository includes Phase 0–1 foundations plus a **Phase 2 ops-depth slice**: short/over receive, FEFO pick suggestions, clinic par / replenishment, and warehouse cycle count.
 
 ## Stack
 
@@ -61,6 +61,13 @@ Rules enforced in code: logistics issues expendable medical supply to clinics; l
 
 Item fields on **Receive**, **Requests**, and logistics **Issue (push)** use a keyboard typeahead (search SKU / name / NDC / UPC) so large catalogs stay usable.
 
+## Phase 2 demo path (`logistics.ops` / `docklog123`)
+
+1. **Short/over receive** → Receive → set Expected qty ≠ Actual qty → enter variance note → post (audit `RECEIVE_SHORT` / `RECEIVE_OVER`).
+2. **FEFO picks** → Issue → search gloves → lot list is earliest-expiry first (`GLV-NEAR-EXP` before longer-dated lot) with near-expiry warning.
+3. **Par / replenish** → Par / replenish → Ortho gloves/gauze below par → “Suggest push” opens Issue prefilled for push-enabled clinics.
+4. **Cycle count** → Cycle count → pick warehouse location + lot → enter counted qty → on-hand adjusts with `CYCLE_COUNT` audit.
+
 ## Environment variables
 
 | Variable | Purpose |
@@ -94,7 +101,8 @@ For **Neon** or **Supabase**, paste the pooled/direct Postgres URL into `DATABAS
 - **Lot** + **InventoryBalance** — ledger key `(hospital, location, item, lot)`
 - **SupplyRequest** + lines — clinic requests; channel `LOGISTICS` or `PHARMACY_SOS`
 - **Transfer** + lines — issue/push/C2C; `ISSUED` then `CONFIRMED` (clinic on-hand)
-- **AuditEvent** — receive / request / issue / confirm
+- **ClinicParLevel** — per clinic+item par qty for replenishment
+- **AuditEvent** — receive (incl. short/over) / request / issue / confirm / cycle count
 
 ## Auth choice
 
@@ -110,5 +118,7 @@ For **Neon** or **Supabase**, paste the pooled/direct Postgres URL into `DATABAS
 ## Out of scope (still)
 
 - SSO, MFA, barcode hardware, temperature logging/excursions
-- Multi-warehouse / multi-hospital, PO/ASN, FEFO allocation UI
+- Full PO/ASN EDI, printable packing slips, clinic↔clinic beyond Pharmacy SOS C2C
+- Clinic cycle count (warehouse only in this Phase 2 slice)
+- Multi-warehouse / multi-hospital
 - Live Vercel deploy from this PR

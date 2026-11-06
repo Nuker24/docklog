@@ -3,8 +3,25 @@ import { prisma } from "@/lib/prisma";
 import { formatQty } from "@/lib/inventory";
 import { IssueForm } from "./IssueForm";
 
-export default async function LogisticsIssuePage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function LogisticsIssuePage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const user = await requireSession();
+  const sp = await searchParams;
+  const suggestedPush =
+    typeof sp.clinicId === "string" &&
+    typeof sp.itemId === "string" &&
+    typeof sp.qty === "string"
+      ? {
+          clinicId: sp.clinicId,
+          itemId: sp.itemId,
+          quantity: Number(sp.qty) || 1,
+        }
+      : null;
 
   const [clinics, openRequests, balances, catalog] = await Promise.all([
     prisma.clinic.findMany({
@@ -67,7 +84,8 @@ export default async function LogisticsIssuePage() {
       <h1>Issue / fulfill</h1>
       <p className="lede">
         Fulfill clinic requests or push expendable supply to clinics with push
-        enabled. Pharmacy drugs are fulfilled by Pharmacy SOS (C2C) — logistics
+        enabled. Lots are ordered FEFO (earliest expiry first) with near-expiry
+        warnings. Pharmacy drugs are fulfilled by Pharmacy SOS (C2C) — logistics
         may still supply Pharmacy itself.
       </p>
 
@@ -79,6 +97,7 @@ export default async function LogisticsIssuePage() {
           isPharmacySos: c.isPharmacySos,
         }))}
         requests={requestOpts}
+        suggestedPush={suggestedPush}
         catalog={catalog.map((item) => ({
           id: item.id,
           sku: item.sku,
@@ -100,6 +119,11 @@ export default async function LogisticsIssuePage() {
           name: b.item.name,
           ndc: b.item.ndc,
           upc: b.item.upc,
+          lotNumber: b.lot.lotNumber,
+          locationCode: b.location.code,
+          expiresOn: b.lot.expiresOn
+            ? b.lot.expiresOn.toISOString().slice(0, 10)
+            : null,
           label: `${b.item.sku} · lot ${b.lot.lotNumber} · ${b.location.code} · ${formatQty(b.quantity)} ${b.item.uom}`,
         }))}
       />
