@@ -6,7 +6,7 @@ import { IssueForm } from "./IssueForm";
 export default async function LogisticsIssuePage() {
   const user = await requireSession();
 
-  const [clinics, openRequests, balances] = await Promise.all([
+  const [clinics, openRequests, balances, catalog] = await Promise.all([
     prisma.clinic.findMany({
       where: { hospitalId: user.hospitalId },
       orderBy: { code: "asc" },
@@ -34,6 +34,10 @@ export default async function LogisticsIssuePage() {
         location: true,
       },
       orderBy: [{ item: { sku: "asc" } }, { lot: { lotNumber: "asc" } }],
+    }),
+    prisma.item.findMany({
+      where: { hospitalId: user.hospitalId, isActive: true },
+      orderBy: { sku: "asc" },
     }),
   ]);
 
@@ -75,6 +79,16 @@ export default async function LogisticsIssuePage() {
           isPharmacySos: c.isPharmacySos,
         }))}
         requests={requestOpts}
+        catalog={catalog.map((item) => ({
+          id: item.id,
+          sku: item.sku,
+          name: item.name,
+          uom: item.uom,
+          ndc: item.ndc,
+          upc: item.upc,
+          requiresCold: item.requiresCold,
+          commodityClass: item.commodityClass,
+        }))}
         stock={balances.map((b) => ({
           key: b.id,
           itemId: b.itemId,
@@ -82,6 +96,10 @@ export default async function LogisticsIssuePage() {
           locationId: b.locationId,
           qty: Number(b.quantity),
           commodityClass: b.item.commodityClass,
+          sku: b.item.sku,
+          name: b.item.name,
+          ndc: b.item.ndc,
+          upc: b.item.upc,
           label: `${b.item.sku} · lot ${b.lot.lotNumber} · ${b.location.code} · ${formatQty(b.quantity)} ${b.item.uom}`,
         }))}
       />

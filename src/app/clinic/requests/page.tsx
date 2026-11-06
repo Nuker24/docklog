@@ -103,7 +103,12 @@ export default async function ClinicRequestsPage() {
       <RequestForm
         items={items.map((item) => ({
           id: item.id,
-          label: `${item.sku} — ${item.name} (${item.uom})`,
+          sku: item.sku,
+          name: item.name,
+          uom: item.uom,
+          ndc: item.ndc,
+          upc: item.upc,
+          requiresCold: item.requiresCold,
           channel: requestChannelForItem(item.commodityClass),
         }))}
       />
