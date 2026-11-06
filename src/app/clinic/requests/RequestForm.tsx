@@ -1,13 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { createRequestAction } from "./actions";
 import { Flash } from "@/components/forms/Flash";
+import { ItemCombobox } from "@/components/forms/ItemCombobox";
 import type { ActionResult } from "@/lib/action-result";
+import type { SearchableItem } from "@/lib/item-search";
 
-type ItemOpt = {
-  id: string;
-  label: string;
+type ItemOpt = SearchableItem & {
   channel: "LOGISTICS" | "PHARMACY_SOS";
 };
 
@@ -16,25 +16,43 @@ export function RequestForm({ items }: { items: ItemOpt[] }) {
     createRequestAction,
     null,
   );
+  const [itemId, setItemId] = useState("");
+  const selected = items.find((i) => i.id === itemId);
 
   return (
-    <form action={formAction} className="ops-form">
+    <form
+      action={formAction}
+      className="ops-form"
+      onSubmit={(e) => {
+        if (!itemId) e.preventDefault();
+      }}
+    >
       {state && <Flash kind={state.ok ? "ok" : "fail"} message={state.message} />}
 
       <div className="field">
         <label htmlFor="itemId">Item</label>
-        <select id="itemId" name="itemId" required defaultValue={items[0]?.id}>
-          {items.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-              {item.channel === "PHARMACY_SOS" ? " → Pharmacy SOS" : " → Logistics"}
-            </option>
-          ))}
-        </select>
+        <ItemCombobox
+          id="itemId"
+          name="itemId"
+          items={items}
+          value={itemId}
+          required
+          onChange={(id) => setItemId(id)}
+        />
         <p className="field-hint">
-          Expendable medical supply routes to logistics. Pharmacy items route to
-          Pharmacy SOS (C2C).
+          Search by SKU, name, NDC, or UPC. Expendable medical supply routes to
+          logistics; pharmacy items route to Pharmacy SOS (C2C).
         </p>
+        {selected?.channel && (
+          <p className="field-hint">
+            Fulfillment channel:{" "}
+            <strong>
+              {selected.channel === "PHARMACY_SOS"
+                ? "Pharmacy SOS"
+                : "Logistics"}
+            </strong>
+          </p>
+        )}
       </div>
 
       <div className="field-row">
@@ -56,7 +74,11 @@ export function RequestForm({ items }: { items: ItemOpt[] }) {
         </div>
       </div>
 
-      <button type="submit" className="btn-primary" disabled={pending}>
+      <button
+        type="submit"
+        className="btn-primary"
+        disabled={pending || !itemId}
+      >
         {pending ? "Submitting…" : "Submit request"}
       </button>
     </form>

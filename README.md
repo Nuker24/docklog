@@ -59,6 +59,8 @@ Open [http://localhost:3000](http://localhost:3000) — you will be redirected t
 
 Rules enforced in code: logistics issues expendable medical supply to clinics; logistics may also supply Pharmacy; pharmacy drugs to other clinics go Pharmacy SOS C2C only.
 
+Item fields on **Receive**, **Requests**, and logistics **Issue (push)** use a keyboard typeahead (search SKU / name / NDC / UPC) so large catalogs stay usable.
+
 ## Environment variables
 
 | Variable | Purpose |

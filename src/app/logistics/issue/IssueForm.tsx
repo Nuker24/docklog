@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { issueAction } from "./actions";
 import { Flash } from "@/components/forms/Flash";
+import { ItemCombobox } from "@/components/forms/ItemCombobox";
 import type { ActionResult } from "@/lib/action-result";
+import type { SearchableItem } from "@/lib/item-search";
 
 type ClinicOpt = {
   id: string;
@@ -28,16 +30,22 @@ type StockOpt = {
   label: string;
   qty: number;
   commodityClass: string;
+  sku: string;
+  name: string;
+  ndc?: string | null;
+  upc?: string | null;
 };
 
 export function IssueForm({
   clinics,
   requests,
   stock,
+  catalog,
 }: {
   clinics: ClinicOpt[];
   requests: RequestOpt[];
   stock: StockOpt[];
+  catalog: SearchableItem[];
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     issueAction,
@@ -50,30 +58,44 @@ export function IssueForm({
   const [clinicId, setClinicId] = useState(
     clinics.find((c) => c.pushEnabled)?.id ?? clinics[0]?.id ?? "",
   );
+  const [pushItemId, setPushItemId] = useState("");
+  const [stockKey, setStockKey] = useState("");
 
   const selectedRequest = requests.find((r) => r.id === requestId);
   const effectiveClinicId =
     mode === "request" ? selectedRequest?.clinicId ?? "" : clinicId;
+  const clinic = clinics.find((c) => c.id === effectiveClinicId);
+
+  const pushCatalog = useMemo(() => {
+    if (clinic?.isPharmacySos) return catalog;
+    return catalog.filter(
+      (i) => i.commodityClass === "EXPENDABLE_MEDICAL_SUPPLY",
+    );
+  }, [catalog, clinic]);
 
   const stockForItem = useMemo(() => {
     const itemId =
-      mode === "request" ? selectedRequest?.itemId : undefined;
+      mode === "request" ? selectedRequest?.itemId : pushItemId || undefined;
     return stock.filter((s) => {
       if (itemId && s.itemId !== itemId) return false;
-      // For push to non-pharmacy: expendable only; pharmacy clinic can get any
-      const clinic = clinics.find((c) => c.id === effectiveClinicId);
       if (mode === "push" && clinic && !clinic.isPharmacySos) {
         return s.commodityClass === "EXPENDABLE_MEDICAL_SUPPLY";
       }
       return true;
     });
-  }, [stock, mode, selectedRequest, clinics, effectiveClinicId]);
+  }, [stock, mode, selectedRequest, pushItemId, clinic]);
 
-  const [stockKey, setStockKey] = useState(stockForItem[0]?.key ?? "");
+  useEffect(() => {
+    setStockKey(stockForItem[0]?.key ?? "");
+  }, [stockForItem]);
+
   const selectedStock =
     stockForItem.find((s) => s.key === stockKey) ?? stockForItem[0];
 
   const pushClinics = clinics.filter((c) => c.pushEnabled);
+
+  // Request-mode stock search: filter stock lines by typed query via ItemCombobox
+  // isn't needed — item is fixed. For request mode with many lots, keep select.
 
   return (
     <form action={formAction} className="ops-form">
@@ -133,7 +155,10 @@ export function IssueForm({
               name="toClinicId"
               required
               value={clinicId}
-              onChange={(e) => setClinicId(e.target.value)}
+              onChange={(e) => {
+                setClinicId(e.target.value);
+                setPushItemId("");
+              }}
             >
               {pushClinics.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -141,6 +166,20 @@ export function IssueForm({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="field">
+            <label htmlFor="pushItemId">Item</label>
+            <ItemCombobox
+              id="pushItemId"
+              name=""
+              items={pushCatalog}
+              value={pushItemId}
+              onChange={(id) => setPushItemId(id)}
+            />
+            <p className="field-hint">
+              Search by SKU, name, NDC, or UPC, then pick lot/location below.
+            </p>
           </div>
         </>
       )}
@@ -150,12 +189,13 @@ export function IssueForm({
       )}
 
       <div className="field">
-        <label htmlFor="stockKey">Pick from warehouse stock</label>
+        <label htmlFor="stockKey">Lot / warehouse location</label>
         <select
           id="stockKey"
           value={selectedStock?.key ?? ""}
           onChange={(e) => setStockKey(e.target.value)}
           required
+          disabled={mode === "push" && !pushItemId}
         >
           {stockForItem.map((s) => (
             <option key={s.key} value={s.key}>
@@ -163,7 +203,13 @@ export function IssueForm({
             </option>
           ))}
         </select>
-        {!stockForItem.length && (
+        {mode === "push" && !pushItemId && (
+          <p className="field-hint">Select an item first.</p>
+        )}
+        {mode === "push" && pushItemId && !stockForItem.length && (
+          <p className="field-hint">No warehouse stock for that item.</p>
+        )}
+        {mode === "request" && !stockForItem.length && (
           <p className="field-hint">No matching warehouse stock.</p>
         )}
       </div>
@@ -190,6 +236,7 @@ export function IssueForm({
             min="0.001"
             step="any"
             required
+            key={`${selectedStock?.key ?? "none"}-${mode}-${requestId}`}
             defaultValue={
               mode === "request" && selectedRequest
                 ? Math.min(selectedRequest.remaining, selectedStock?.qty ?? 1)
@@ -210,7 +257,11 @@ export function IssueForm({
       <button
         type="submit"
         className="btn-primary"
-        disabled={pending || !selectedStock}
+        disabled={
+          pending ||
+          !selectedStock ||
+          (mode === "push" && !pushItemId)
+        }
       >
         {pending ? "Issuing…" : "Issue to clinic"}
       </button>

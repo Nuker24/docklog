@@ -21,15 +21,19 @@ export default async function LogisticsReceivePage() {
     <div className="ops-page">
       <h1>Receive inbound</h1>
       <p className="lede">
-        Ad-hoc receive to a warehouse location (receive-to-bin). Keyboard entry —
-        capture item, lot, expiry, and quantity. Cold-chain items are blocked from
-        ambient bins.
+        Ad-hoc receive to a warehouse location (receive-to-bin). Search the item
+        master by SKU, name, NDC, or UPC — keyboard entry, no barcode hardware.
+        Cold-chain items are blocked from ambient bins.
       </p>
 
       <ReceiveForm
         items={items.map((item) => ({
           id: item.id,
-          label: `${item.sku} — ${item.name} (${item.uom})${item.requiresCold ? " · COLD" : ""}`,
+          sku: item.sku,
+          name: item.name,
+          uom: item.uom,
+          ndc: item.ndc,
+          upc: item.upc,
           requiresCold: item.requiresCold,
         }))}
         locations={locations.map((loc) => ({
