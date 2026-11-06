@@ -9,6 +9,7 @@ const nav = [
   { href: "/clinic/requests", label: "Requests" },
   { href: "/clinic/transfer", label: "Transfer out" },
   { href: "/clinic/confirm", label: "Confirm receipt" },
+  { href: "/clinic/recalls", label: "Recalls" },
   { href: "/clinic/on-hand", label: "On-hand" },
 ];
 

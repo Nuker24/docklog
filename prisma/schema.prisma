@@ -1,4 +1,4 @@
-// DockLog Phase 2 — ops depth (par, FEFO picks, receive variance, cycle count)
+// DockLog Phase 3 — recalls + richer audit export
 
 generator client {
   provider = "prisma-client-js"
@@ -64,6 +64,19 @@ enum InboundStatus {
   CANCELLED
 }
 
+enum RecallStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum RecallTaskStatus {
+  OPEN
+  RETURNED
+  CONFIRMED
+  CANCELLED
+}
+
 model Hospital {
   id        String   @id @default(cuid())
   code      String   @unique
@@ -82,6 +95,7 @@ model Hospital {
   transfers         Transfer[]
   clinicParLevels   ClinicParLevel[]
   inboundShipments  InboundShipment[]
+  recallCampaigns   RecallCampaign[]
 }
 
 model User {
@@ -100,9 +114,12 @@ model User {
   clinic            Clinic?         @relation(fields: [clinicId], references: [id], onDelete: SetNull)
   audits            AuditEvent[]
   requestsCreated   SupplyRequest[] @relation("RequestCreator")
-  transfersIssued    Transfer[]       @relation("TransferIssuer")
-  transfersConfirmed Transfer[]       @relation("TransferConfirmer")
+  transfersIssued    Transfer[]        @relation("TransferIssuer")
+  transfersConfirmed Transfer[]        @relation("TransferConfirmer")
   inboundShipments   InboundShipment[] @relation("InboundCreator")
+  recallsCreated     RecallCampaign[]  @relation("RecallCreator")
+  recallTasksReturned  RecallReturnTask[] @relation("RecallTaskReturner")
+  recallTasksConfirmed RecallReturnTask[] @relation("RecallTaskConfirmer")
 
   @@index([hospitalId])
   @@index([clinicId])
@@ -142,6 +159,7 @@ model Clinic {
   inboundTransfers Transfer[]      @relation("TransferToClinic")
   outboundTransfers Transfer[]     @relation("TransferFromClinic")
   parLevels        ClinicParLevel[]
+  recallTasks      RecallReturnTask[]
 
   @@unique([hospitalId, code])
   @@index([hospitalId])
@@ -164,6 +182,7 @@ model Location {
   inventoryBalances InventoryBalance[]
   transferLinesFrom TransferLine[]
   transfersConfirmed Transfer[]        @relation("TransferConfirmLocation")
+  recallTasks       RecallReturnTask[]
 
   @@unique([hospitalId, code])
   @@index([warehouseId])
@@ -192,6 +211,8 @@ model Item {
   transferLines      TransferLine[]
   clinicParLevels    ClinicParLevel[]
   inboundShipmentLines InboundShipmentLine[]
+  recallCampaigns      RecallCampaign[]
+  recallTasks          RecallReturnTask[]
 
   @@unique([hospitalId, sku])
   @@index([hospitalId])
@@ -223,6 +244,8 @@ model Lot {
   itemId     String
   lotNumber  String
   expiresOn  DateTime?
+  /// Held lots cannot be issued / transferred until released.
+  onHold     Boolean   @default(false)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -230,9 +253,12 @@ model Lot {
   item              Item               @relation(fields: [itemId], references: [id], onDelete: Cascade)
   inventoryBalances InventoryBalance[]
   transferLines     TransferLine[]
+  recallCampaigns   RecallCampaign[]
+  recallTasks       RecallReturnTask[]
 
   @@unique([itemId, lotNumber])
   @@index([hospitalId])
+  @@index([hospitalId, onHold])
 }
 
 /// Inventory truth: (hospital, location, item, lot).
@@ -376,7 +402,65 @@ model TransferLine {
   @@index([itemId])
 }
 
-/// Append-only audit for receive / issue / confirm / request.
+/// Lot (or item/NDC) recall campaign — holds lot and creates clinic return tasks.
+model RecallCampaign {
+  id              String       @id @default(cuid())
+  hospitalId      String
+  status          RecallStatus @default(OPEN)
+  referenceNumber String?
+  reason          String
+  notes           String?
+  lotId           String?
+  itemId          String?
+  ndc             String?
+  createdById     String?
+  createdAt       DateTime     @default(now())
+  closedAt        DateTime?
+  updatedAt       DateTime     @updatedAt
+
+  hospital  Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  lot       Lot?               @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  item      Item?              @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  createdBy User?              @relation("RecallCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  tasks     RecallReturnTask[]
+
+  @@index([hospitalId, status])
+  @@index([lotId])
+  @@index([itemId])
+}
+
+model RecallReturnTask {
+  id               String           @id @default(cuid())
+  campaignId       String
+  clinicId         String
+  locationId       String
+  itemId           String
+  lotId            String
+  quantityOnHand   Decimal          @db.Decimal(14, 3)
+  quantityReturned Decimal          @default(0) @db.Decimal(14, 3)
+  status           RecallTaskStatus @default(OPEN)
+  notes            String?
+  returnedAt       DateTime?
+  returnedById     String?
+  confirmedAt      DateTime?
+  confirmedById    String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  campaign    RecallCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  clinic      Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  location    Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  item        Item           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  lot         Lot            @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  returnedBy  User?          @relation("RecallTaskReturner", fields: [returnedById], references: [id], onDelete: SetNull)
+  confirmedBy User?          @relation("RecallTaskConfirmer", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, status])
+  @@index([clinicId, status])
+  @@index([lotId])
+}
+
+/// Append-only audit for receive / issue / confirm / request / recall.
 model AuditEvent {
   id         String   @id @default(cuid())
   hospitalId String
