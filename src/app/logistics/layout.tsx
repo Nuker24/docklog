@@ -5,9 +5,9 @@ import { canAccessLogistics } from "@/lib/roles";
 
 const nav = [
   { href: "/logistics", label: "Home" },
-  { href: "/logistics/receive", label: "Receive (soon)" },
-  { href: "/logistics/on-hand", label: "On-hand (soon)" },
-  { href: "/logistics/issue", label: "Issue (soon)" },
+  { href: "/logistics/receive", label: "Receive" },
+  { href: "/logistics/on-hand", label: "On-hand" },
+  { href: "/logistics/issue", label: "Issue / fulfill" },
 ];
 
 export default async function LogisticsLayout({

@@ -2,7 +2,7 @@
 
 Clinical supply warehouse management for hospitals and clinics. Central logistics stocks, holds, and replenishes clinics — with Pharmacy as source of supply (SOS) for drugs.
 
-This repository is the **Phase 0 foundations** scaffold: domain schema, seed data, username/password auth, sign-in UI, and role-gated Logistics / Clinic module shells. Full receive / putaway / request / confirm flows are Phase 1.
+This repository includes **Phase 0 foundations** plus the **Phase 1 MVP vertical slice**: receive → warehouse on-hand → clinic request or logistics push → issue/transfer → clinic confirm → clinic on-hand.
 
 ## Stack
 
@@ -48,6 +48,17 @@ Open [http://localhost:3000](http://localhost:3000) — you will be redirected t
 | `clinic.ortho` | Clinic supply (Orthopedics) | Clinic |
 | `clinic.pharmacy` | Clinic supply (Pharmacy SOS) | Clinic |
 
+## Phase 1 demo path
+
+1. **Logistics receive** (`logistics.ops`) → Receive → pick an item, lot, expiry, qty, warehouse location. Cold items are blocked from ambient bins.
+2. **Warehouse on-hand** → confirm balances.
+3. **Clinic request** (`clinic.ortho`) → Requests → request gloves/gauze (routes to logistics) or insulin (routes to Pharmacy SOS).
+4. **Logistics fulfill** (`logistics.ops`) → Issue / fulfill → fulfill the open request **or** push expendable supply to Ortho/Pharmacy (push-enabled). Med-Surg has push off (request-only).
+5. **Clinic confirm** (`clinic.ortho`) → Confirm receipt into Ortho cart → On-hand updates.
+6. **Pharmacy C2C** (`clinic.ortho` requests insulin → `clinic.pharmacy` fulfills from Pharmacy stock on Requests page → Ortho confirms).
+
+Rules enforced in code: logistics issues expendable medical supply to clinics; logistics may also supply Pharmacy; pharmacy drugs to other clinics go Pharmacy SOS C2C only.
+
 ## Environment variables
 
 | Variable | Purpose |
@@ -70,7 +81,7 @@ For **Neon** or **Supabase**, paste the pooled/direct Postgres URL into `DATABAS
 | `npm run db:seed` | Re-seed demo hospital / users / items |
 | `npm run db:studio` | Prisma Studio |
 
-## Domain snapshot (Phase 0)
+## Domain snapshot
 
 - **Hospital** — tenant boundary
 - **Warehouse** — one per hospital
@@ -79,13 +90,13 @@ For **Neon** or **Supabase**, paste the pooled/direct Postgres URL into `DATABAS
 - **User** — hospital-scoped roles (logistics admin/operator, clinic supply, auditor)
 - **Item** — SKU, optional NDC/UPC, commodity class (`EXPENDABLE_MEDICAL_SUPPLY` \| `PHARMACY`)
 - **Lot** + **InventoryBalance** — ledger key `(hospital, location, item, lot)`
-- **AuditEvent** — append-only stub for later movement audit
-
-Product rules encoded in seed/schema comments: logistics issues expendable medical supply; Pharmacy SOS is C2C source for drugs; cold chain is temp-zone flags only; keyboard entry (no barcode hardware).
+- **SupplyRequest** + lines — clinic requests; channel `LOGISTICS` or `PHARMACY_SOS`
+- **Transfer** + lines — issue/push/C2C; `ISSUED` then `CONFIRMED` (clinic on-hand)
+- **AuditEvent** — receive / request / issue / confirm
 
 ## Auth choice
 
-**Auth.js (NextAuth v5)** with the **Credentials** provider and JWT sessions. Passwords are hashed with **bcryptjs**. Middleware role-gates `/logistics` and `/clinic`. This keeps username/password-only sign-in simple for Phase 0 without SSO surface area.
+**Auth.js (NextAuth v5)** with the **Credentials** provider and JWT sessions. Passwords are hashed with **bcryptjs**. Middleware role-gates `/logistics` and `/clinic`.
 
 ## Hosting notes (later)
 
@@ -94,11 +105,8 @@ Product rules encoded in seed/schema comments: logistics issues expendable medic
 3. Run migrations against the remote DB (`npx prisma migrate deploy`).
 4. Deploy the Next.js app to Vercel.
 
-HIPAA-ready / self-hosted deployment is out of scope for early hosting.
+## Out of scope (still)
 
-## Out of scope (this scaffold)
-
-- Full receive / putaway / request / confirm workflows
-- SSO, MFA, barcode hardware, temperature logging
-- Multi-warehouse / multi-hospital
+- SSO, MFA, barcode hardware, temperature logging/excursions
+- Multi-warehouse / multi-hospital, PO/ASN, FEFO allocation UI
 - Live Vercel deploy from this PR

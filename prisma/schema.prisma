@@ -1,4 +1,4 @@
-// DockLog Phase 0 — hospital medical logistics domain
+// DockLog Phase 1 — hospital medical logistics domain + MVP workflows
 
 generator client {
   provider = "prisma-client-js"
@@ -33,6 +33,30 @@ enum LocationKind {
   CLINIC
 }
 
+enum RequestStatus {
+  OPEN
+  FULFILLED
+  CANCELLED
+}
+
+/// Who fulfills the request: logistics warehouse vs Pharmacy SOS (C2C drugs).
+enum RequestChannel {
+  LOGISTICS
+  PHARMACY_SOS
+}
+
+enum TransferStatus {
+  ISSUED
+  CONFIRMED
+  CANCELLED
+}
+
+enum TransferKind {
+  REQUEST_FULFILLMENT
+  LOGISTICS_PUSH
+  PHARMACY_C2C
+}
+
 model Hospital {
   id        String   @id @default(cuid())
   code      String   @unique
@@ -40,13 +64,15 @@ model Hospital {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users              User[]
-  warehouse          Warehouse?
-  clinics            Clinic[]
-  items              Item[]
-  lots               Lot[]
-  inventoryBalances  InventoryBalance[]
-  auditEvents        AuditEvent[]
+  users             User[]
+  warehouse         Warehouse?
+  clinics           Clinic[]
+  items             Item[]
+  lots              Lot[]
+  inventoryBalances InventoryBalance[]
+  auditEvents       AuditEvent[]
+  supplyRequests    SupplyRequest[]
+  transfers         Transfer[]
 }
 
 model User {
@@ -61,15 +87,18 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  clinic   Clinic?  @relation(fields: [clinicId], references: [id], onDelete: SetNull)
-  audits   AuditEvent[]
+  hospital          Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  clinic            Clinic?         @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  audits            AuditEvent[]
+  requestsCreated   SupplyRequest[] @relation("RequestCreator")
+  transfersIssued   Transfer[]      @relation("TransferIssuer")
+  transfersConfirmed Transfer[]     @relation("TransferConfirmer")
 
   @@index([hospitalId])
   @@index([clinicId])
 }
 
-/// One warehouse per hospital (Phase 0 constraint).
+/// One warehouse per hospital.
 model Warehouse {
   id         String   @id @default(cuid())
   hospitalId String   @unique
@@ -96,9 +125,11 @@ model Clinic {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  hospital  Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  users     User[]
-  locations Location[]
+  hospital         Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  users            User[]
+  locations        Location[]
+  supplyRequests   SupplyRequest[] @relation("RequestingClinic")
+  inboundTransfers Transfer[]      @relation("TransferToClinic")
 
   @@unique([hospitalId, code])
   @@index([hospitalId])
@@ -119,6 +150,8 @@ model Location {
   warehouse         Warehouse?         @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   clinic            Clinic?            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   inventoryBalances InventoryBalance[]
+  transferLinesFrom TransferLine[]
+  transfersConfirmed Transfer[]        @relation("TransferConfirmLocation")
 
   @@unique([hospitalId, code])
   @@index([warehouseId])
@@ -143,6 +176,8 @@ model Item {
   hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   lots              Lot[]
   inventoryBalances InventoryBalance[]
+  requestLines      SupplyRequestLine[]
+  transferLines     TransferLine[]
 
   @@unique([hospitalId, sku])
   @@index([hospitalId])
@@ -161,6 +196,7 @@ model Lot {
   hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   item              Item               @relation(fields: [itemId], references: [id], onDelete: Cascade)
   inventoryBalances InventoryBalance[]
+  transferLines     TransferLine[]
 
   @@unique([itemId, lotNumber])
   @@index([hospitalId])
@@ -187,7 +223,90 @@ model InventoryBalance {
   @@index([itemId])
 }
 
-/// Append-only audit stub for Phase 0 (receive/move/issue come in Phase 1).
+model SupplyRequest {
+  id                  String         @id @default(cuid())
+  hospitalId          String
+  requestingClinicId  String
+  channel             RequestChannel
+  status              RequestStatus  @default(OPEN)
+  notes               String?
+  requestedById       String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  hospital         Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  requestingClinic Clinic              @relation("RequestingClinic", fields: [requestingClinicId], references: [id], onDelete: Cascade)
+  requestedBy      User?               @relation("RequestCreator", fields: [requestedById], references: [id], onDelete: SetNull)
+  lines            SupplyRequestLine[]
+  transfers        Transfer[]
+
+  @@index([hospitalId, status])
+  @@index([requestingClinicId])
+  @@index([channel, status])
+}
+
+model SupplyRequestLine {
+  id                 String  @id @default(cuid())
+  requestId          String
+  itemId             String
+  quantityRequested  Decimal @db.Decimal(14, 3)
+  quantityFulfilled  Decimal @default(0) @db.Decimal(14, 3)
+
+  request SupplyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  item    Item          @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([requestId])
+  @@index([itemId])
+}
+
+/// Issue/transfer to a clinic. Stock leaves source on ISSUED; clinic on-hand updates on CONFIRMED.
+model Transfer {
+  id              String         @id @default(cuid())
+  hospitalId      String
+  kind            TransferKind
+  status          TransferStatus @default(ISSUED)
+  requestId       String?
+  toClinicId      String
+  toLocationId    String?
+  issuedById      String?
+  confirmedById   String?
+  issuedAt        DateTime       @default(now())
+  confirmedAt     DateTime?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  hospital    Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  request     SupplyRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  toClinic    Clinic         @relation("TransferToClinic", fields: [toClinicId], references: [id], onDelete: Cascade)
+  toLocation  Location?      @relation("TransferConfirmLocation", fields: [toLocationId], references: [id], onDelete: SetNull)
+  issuedBy    User?          @relation("TransferIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
+  confirmedBy User?          @relation("TransferConfirmer", fields: [confirmedById], references: [id], onDelete: SetNull)
+  lines       TransferLine[]
+
+  @@index([hospitalId, status])
+  @@index([toClinicId, status])
+  @@index([requestId])
+}
+
+model TransferLine {
+  id             String  @id @default(cuid())
+  transferId     String
+  itemId         String
+  lotId          String
+  fromLocationId String
+  quantity       Decimal @db.Decimal(14, 3)
+
+  transfer     Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  item         Item     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  lot          Lot      @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  fromLocation Location @relation(fields: [fromLocationId], references: [id], onDelete: Restrict)
+
+  @@index([transferId])
+  @@index([itemId])
+}
+
+/// Append-only audit for receive / issue / confirm / request.
 model AuditEvent {
   id         String   @id @default(cuid())
   hospitalId String
