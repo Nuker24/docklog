@@ -41,3 +41,24 @@ export function logisticsMayIssueItemToClinic(input: {
 
   return { ok: false, error: "Issue not allowed for this item/clinic." };
 }
+
+/**
+ * Clinic→clinic: expendable may move between any clinics.
+ * Pharmacy drugs may only leave a Pharmacy SOS clinic (still SOS for drugs).
+ */
+export function clinicMayTransferItem(input: {
+  item: Pick<Item, "commodityClass" | "sku">;
+  fromClinic: Pick<Clinic, "isPharmacySos" | "name" | "id">;
+  toClinic: Pick<Clinic, "id" | "name">;
+}): { ok: true } | { ok: false; error: string } {
+  if (input.fromClinic.id === input.toClinic.id) {
+    return { ok: false, error: "Choose a different destination clinic." };
+  }
+  if (input.item.commodityClass === "PHARMACY" && !input.fromClinic.isPharmacySos) {
+    return {
+      ok: false,
+      error: `Pharmacy items must transfer from Pharmacy SOS, not ${input.fromClinic.name}.`,
+    };
+  }
+  return { ok: true };
+}

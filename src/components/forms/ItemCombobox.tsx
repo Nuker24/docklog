@@ -35,7 +35,7 @@ export function ItemCombobox<T extends SearchableItem>({
   onChange,
   required,
   placeholder = "Search SKU, name, NDC, or UPC…",
-  disabled,
+  disabled = false,
 }: ItemComboboxProps<T>) {
   const autoId = useId();
   const inputId = id ?? `item-combo-${autoId}`;

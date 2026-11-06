@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { adjustBalance } from "@/lib/inventory";
 import { checkTempZoneCompatibility } from "@/lib/temp-zone";
+import { applyInboundReceiveProgress } from "@/lib/inbound";
 
 export type ReceiveInput = {
   hospitalId: string;
@@ -18,6 +19,8 @@ export type ReceiveInput = {
   expectedQuantity?: number | null;
   /** Required when expected is set and differs from actual. */
   varianceNote?: string | null;
+  /** Optional inbound PO/ASN line to receive against. */
+  inboundLineId?: string | null;
 };
 
 export async function receiveInbound(input: ReceiveInput) {
@@ -28,12 +31,43 @@ export async function receiveInbound(input: ReceiveInput) {
     throw new Error("Actual quantity must be greater than zero.");
   }
 
+  let inboundLine:
+    | {
+        id: string;
+        shipmentId: string;
+        itemId: string;
+        quantityExpected: Prisma.Decimal;
+        quantityReceived: Prisma.Decimal;
+        shipment: { referenceNumber: string; status: string };
+      }
+    | null = null;
+
+  if (input.inboundLineId) {
+    inboundLine = await prisma.inboundShipmentLine.findFirst({
+      where: {
+        id: input.inboundLineId,
+        shipment: { hospitalId: input.hospitalId, status: "OPEN" },
+      },
+      include: { shipment: true },
+    });
+    if (!inboundLine) throw new Error("Open inbound line not found.");
+    if (inboundLine.itemId !== input.itemId) {
+      throw new Error("Selected item does not match the inbound line.");
+    }
+  }
+
   let expected: number | null = null;
-  if (
+  if (inboundLine && (input.expectedQuantity == null || Number.isNaN(Number(input.expectedQuantity)))) {
+    const remaining = inboundLine.quantityExpected.minus(inboundLine.quantityReceived);
+    expected = Number(remaining);
+  } else if (
     input.expectedQuantity != null &&
     !(typeof input.expectedQuantity === "number" && Number.isNaN(input.expectedQuantity))
   ) {
     expected = Number(input.expectedQuantity);
+  }
+
+  if (expected != null) {
     if (!(expected > 0) || Number.isNaN(expected)) {
       throw new Error("Expected quantity must be greater than zero when provided.");
     }
@@ -112,6 +146,17 @@ export async function receiveInbound(input: ReceiveInput) {
       delta: new Prisma.Decimal(input.quantity),
     });
 
+    if (inboundLine) {
+      await applyInboundReceiveProgress({
+        hospitalId: input.hospitalId,
+        actorId: input.actorId,
+        shipmentId: inboundLine.shipmentId,
+        lineId: inboundLine.id,
+        quantityReceived: input.quantity,
+        tx,
+      });
+    }
+
     const action =
       varianceKind === "SHORT"
         ? "RECEIVE_SHORT"
@@ -124,13 +169,17 @@ export async function receiveInbound(input: ReceiveInput) {
         ? ""
         : ` · ${varianceKind} expected ${expected} / actual ${input.quantity}`;
 
+    const inboundText = inboundLine
+      ? ` against ${inboundLine.shipment.referenceNumber}`
+      : "";
+
     await writeAudit(tx, {
       hospitalId: input.hospitalId,
       actorId: input.actorId,
       action,
       entityType: "Lot",
       entityId: lot.id,
-      summary: `Received ${input.quantity} ${item.uom} of ${item.sku} lot ${lot.lotNumber} into ${location.code}${varianceText}`,
+      summary: `Received ${input.quantity} ${item.uom} of ${item.sku} lot ${lot.lotNumber} into ${location.code}${inboundText}${varianceText}`,
       metadata: {
         itemId: item.id,
         locationId: location.id,
@@ -139,11 +188,21 @@ export async function receiveInbound(input: ReceiveInput) {
         variance: variance?.toString() ?? null,
         varianceKind,
         varianceNote: input.varianceNote?.trim() || null,
+        inboundLineId: inboundLine?.id ?? null,
+        inboundShipmentId: inboundLine?.shipmentId ?? null,
         tempZone: location.tempZone,
         warning: zoneCheck.warning ?? null,
       },
     });
 
-    return { lot, item, location, varianceKind, expected, variance };
+    return {
+      lot,
+      item,
+      location,
+      varianceKind,
+      expected,
+      variance,
+      inboundRef: inboundLine?.shipment.referenceNumber ?? null,
+    };
   });
 }

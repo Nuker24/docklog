@@ -9,22 +9,41 @@ import type { SearchableItem } from "@/lib/item-search";
 
 type LocOption = { id: string; label: string; tempZone?: string };
 type ItemOption = SearchableItem & { requiresCold?: boolean };
+type InboundLineOpt = {
+  id: string;
+  shipmentId: string;
+  label: string;
+  itemId: string;
+  remaining: number;
+};
 
 export function ReceiveForm({
   items,
   locations,
+  inboundLines,
+  initialInboundId,
 }: {
   items: ItemOption[];
   locations: LocOption[];
+  inboundLines: InboundLineOpt[];
+  initialInboundId?: string | null;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     receiveAction,
     null,
   );
   const [showAck, setShowAck] = useState(false);
-  const [selectedItemId, setSelectedItemId] = useState("");
+  const initialLine =
+    inboundLines.find((l) => l.shipmentId === initialInboundId) ?? inboundLines[0];
+  const [inboundLineId, setInboundLineId] = useState(
+    initialInboundId ? initialLine?.id ?? "" : "",
+  );
+  const selectedInbound = inboundLines.find((l) => l.id === inboundLineId);
+  const [selectedItemId, setSelectedItemId] = useState(selectedInbound?.itemId ?? "");
   const [selectedLocId, setSelectedLocId] = useState(locations[0]?.id ?? "");
-  const [expectedQty, setExpectedQty] = useState("");
+  const [expectedQty, setExpectedQty] = useState(
+    selectedInbound ? String(selectedInbound.remaining) : "",
+  );
   const [actualQty, setActualQty] = useState("1");
 
   useEffect(() => {
@@ -35,6 +54,13 @@ export function ReceiveForm({
       setShowAck(false);
     }
   }, [state]);
+
+  useEffect(() => {
+    if (selectedInbound) {
+      setSelectedItemId(selectedInbound.itemId);
+      setExpectedQty(String(selectedInbound.remaining));
+    }
+  }, [selectedInbound]);
 
   const selectedItem = items.find((i) => i.id === selectedItemId);
   const selectedLoc = locations.find((l) => l.id === selectedLocId);
@@ -66,6 +92,31 @@ export function ReceiveForm({
       )}
 
       <div className="field">
+        <label htmlFor="inboundLineId">Inbound PO / ASN line (optional)</label>
+        <select
+          id="inboundLineId"
+          name="inboundLineId"
+          value={inboundLineId}
+          onChange={(e) => {
+            setInboundLineId(e.target.value);
+            if (!e.target.value) {
+              setExpectedQty("");
+            }
+          }}
+        >
+          <option value="">Ad-hoc receive (no PO)</option>
+          {inboundLines.map((line) => (
+            <option key={line.id} value={line.id}>
+              {line.label}
+            </option>
+          ))}
+        </select>
+        <p className="field-hint">
+          Selecting a line prefills item + remaining expected qty for short/over.
+        </p>
+      </div>
+
+      <div className="field">
         <label htmlFor="itemId">Item</label>
         <ItemCombobox
           id="itemId"
@@ -74,6 +125,7 @@ export function ReceiveForm({
           value={selectedItemId}
           required
           onChange={(id) => setSelectedItemId(id)}
+          disabled={Boolean(selectedInbound)}
         />
         <p className="field-hint">Type to search by SKU, name, NDC, or UPC.</p>
         {selectedItem?.requiresCold && (
@@ -128,7 +180,7 @@ export function ReceiveForm({
 
       {variance != null && (
         <p
-          className={`field-hint${needsVarianceNote ? (variance < 0 ? " cold" : "") : ""}`}
+          className="field-hint"
           style={
             needsVarianceNote
               ? { color: variance < 0 ? "var(--danger)" : "var(--teal-deep)" }

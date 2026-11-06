@@ -23,6 +23,7 @@ export async function receiveAction(
   const expectedRaw = String(formData.get("expectedQuantity") ?? "").trim();
   const expectedQuantity = expectedRaw === "" ? null : Number(expectedRaw);
   const varianceNote = String(formData.get("varianceNote") ?? "") || null;
+  const inboundLineId = String(formData.get("inboundLineId") ?? "") || null;
   const acknowledgeTempWarning = formData.get("acknowledgeTempWarning") === "on";
 
   try {
@@ -36,11 +37,13 @@ export async function receiveAction(
       quantity,
       expectedQuantity,
       varianceNote,
+      inboundLineId,
       acknowledgeTempWarning,
     });
     revalidatePath("/logistics");
     revalidatePath("/logistics/receive");
     revalidatePath("/logistics/on-hand");
+    revalidatePath("/logistics/inbound");
 
     const varianceMsg =
       result.varianceKind === "SHORT"
@@ -48,9 +51,10 @@ export async function receiveAction(
         : result.varianceKind === "OVER"
           ? ` Over vs expected ${result.expected} (audited).`
           : "";
+    const inboundMsg = result.inboundRef ? ` Against ${result.inboundRef}.` : "";
 
     return ok(
-      `Received ${quantity} ${result.item.uom} of ${result.item.sku} lot ${result.lot.lotNumber} into ${result.location.code}.${varianceMsg}`,
+      `Received ${quantity} ${result.item.uom} of ${result.item.sku} lot ${result.lot.lotNumber} into ${result.location.code}.${inboundMsg}${varianceMsg}`,
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : "Receive failed.";
