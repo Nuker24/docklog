@@ -11,6 +11,8 @@ async function main() {
   await prisma.transfer.deleteMany();
   await prisma.supplyRequestLine.deleteMany();
   await prisma.supplyRequest.deleteMany();
+  await prisma.inboundShipmentLine.deleteMany();
+  await prisma.inboundShipment.deleteMany();
   await prisma.clinicParLevel.deleteMany();
   await prisma.inventoryBalance.deleteMany();
   await prisma.lot.deleteMany();
@@ -388,6 +390,28 @@ async function main() {
     ],
   });
 
+  await prisma.inboundShipment.create({
+    data: {
+      hospitalId: hospital.id,
+      referenceNumber: "PO-2026-DEMO",
+      vendorName: "Medline Industries",
+      status: "OPEN",
+      notes: "Demo PO for assisted receiving",
+      lines: {
+        create: [
+          {
+            itemId: gloveItem.id,
+            quantityExpected: 24,
+          },
+          {
+            itemId: syringeItem.id,
+            quantityExpected: 50,
+          },
+        ],
+      },
+    },
+  });
+
   const logisticsUser = await prisma.user.create({
     data: {
       hospitalId: hospital.id,
@@ -437,7 +461,7 @@ async function main() {
       action: "SEED",
       entityType: "Hospital",
       entityId: hospital.id,
-      summary: "Phase 2 demo seed applied (pars + near-expiry lot)",
+      summary: "Phase 2b demo seed (pars, near-expiry, sample PO)",
       metadata: {
         users: [
           logisticsUser.username,
@@ -457,7 +481,7 @@ async function main() {
   console.log("  clinic.ortho      — Orthopedics clinic user");
   console.log("  clinic.pharmacy   — Pharmacy clinic user (SOS)");
   console.log("MVP demo: receive → request/push → issue → clinic confirm.");
-  console.log("Phase 2: short/over receive, FEFO picks, par page, cycle count.");
+  console.log("Phase 2: short/over, FEFO, par, cycle count, PO/ASN, C2C transfer, print slips.");
 }
 
 main()

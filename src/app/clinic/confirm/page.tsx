@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatQty } from "@/lib/inventory";
@@ -73,6 +74,7 @@ export default async function ClinicConfirmPage() {
                 <th>Kind</th>
                 <th>Lines</th>
                 <th>Issued</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -89,6 +91,15 @@ export default async function ClinicConfirmPage() {
                   </td>
                   <td className="mono">
                     {t.issuedAt.toISOString().slice(0, 16).replace("T", " ")}
+                  </td>
+                  <td>
+                    <Link
+                      className="btn-link"
+                      href={`/print/transfer/${t.id}`}
+                      target="_blank"
+                    >
+                      Print slip
+                    </Link>
                   </td>
                 </tr>
               ))}

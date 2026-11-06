@@ -55,6 +55,13 @@ enum TransferKind {
   REQUEST_FULFILLMENT
   LOGISTICS_PUSH
   PHARMACY_C2C
+  CLINIC_TRANSFER
+}
+
+enum InboundStatus {
+  OPEN
+  CLOSED
+  CANCELLED
 }
 
 model Hospital {
@@ -74,6 +81,7 @@ model Hospital {
   supplyRequests    SupplyRequest[]
   transfers         Transfer[]
   clinicParLevels   ClinicParLevel[]
+  inboundShipments  InboundShipment[]
 }
 
 model User {
@@ -92,8 +100,9 @@ model User {
   clinic            Clinic?         @relation(fields: [clinicId], references: [id], onDelete: SetNull)
   audits            AuditEvent[]
   requestsCreated   SupplyRequest[] @relation("RequestCreator")
-  transfersIssued   Transfer[]      @relation("TransferIssuer")
-  transfersConfirmed Transfer[]     @relation("TransferConfirmer")
+  transfersIssued    Transfer[]       @relation("TransferIssuer")
+  transfersConfirmed Transfer[]       @relation("TransferConfirmer")
+  inboundShipments   InboundShipment[] @relation("InboundCreator")
 
   @@index([hospitalId])
   @@index([clinicId])
@@ -131,6 +140,7 @@ model Clinic {
   locations        Location[]
   supplyRequests   SupplyRequest[] @relation("RequestingClinic")
   inboundTransfers Transfer[]      @relation("TransferToClinic")
+  outboundTransfers Transfer[]     @relation("TransferFromClinic")
   parLevels        ClinicParLevel[]
 
   @@unique([hospitalId, code])
@@ -178,9 +188,10 @@ model Item {
   hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   lots              Lot[]
   inventoryBalances InventoryBalance[]
-  requestLines      SupplyRequestLine[]
-  transferLines     TransferLine[]
-  clinicParLevels   ClinicParLevel[]
+  requestLines       SupplyRequestLine[]
+  transferLines      TransferLine[]
+  clinicParLevels    ClinicParLevel[]
+  inboundShipmentLines InboundShipmentLine[]
 
   @@unique([hospitalId, sku])
   @@index([hospitalId])
@@ -288,6 +299,7 @@ model Transfer {
   kind            TransferKind
   status          TransferStatus @default(ISSUED)
   requestId       String?
+  fromClinicId    String?
   toClinicId      String
   toLocationId    String?
   issuedById      String?
@@ -300,6 +312,7 @@ model Transfer {
 
   hospital    Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   request     SupplyRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  fromClinic  Clinic?        @relation("TransferFromClinic", fields: [fromClinicId], references: [id], onDelete: SetNull)
   toClinic    Clinic         @relation("TransferToClinic", fields: [toClinicId], references: [id], onDelete: Cascade)
   toLocation  Location?      @relation("TransferConfirmLocation", fields: [toLocationId], references: [id], onDelete: SetNull)
   issuedBy    User?          @relation("TransferIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
@@ -308,7 +321,42 @@ model Transfer {
 
   @@index([hospitalId, status])
   @@index([toClinicId, status])
+  @@index([fromClinicId, status])
   @@index([requestId])
+}
+
+/// Lightweight PO/ASN header for assisted receiving (no EDI).
+model InboundShipment {
+  id              String        @id @default(cuid())
+  hospitalId      String
+  referenceNumber String
+  vendorName      String?
+  status          InboundStatus @default(OPEN)
+  notes           String?
+  createdById     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  hospital  Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  createdBy User?                 @relation("InboundCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  lines     InboundShipmentLine[]
+
+  @@unique([hospitalId, referenceNumber])
+  @@index([hospitalId, status])
+}
+
+model InboundShipmentLine {
+  id               String  @id @default(cuid())
+  shipmentId       String
+  itemId           String
+  quantityExpected Decimal @db.Decimal(14, 3)
+  quantityReceived Decimal @default(0) @db.Decimal(14, 3)
+
+  shipment InboundShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  item     Item            @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([shipmentId])
+  @@index([itemId])
 }
 
 model TransferLine {

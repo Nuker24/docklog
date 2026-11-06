@@ -2,7 +2,10 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { adjustBalance } from "@/lib/inventory";
-import { logisticsMayIssueItemToClinic } from "@/lib/commodity-rules";
+import {
+  clinicMayTransferItem,
+  logisticsMayIssueItemToClinic,
+} from "@/lib/commodity-rules";
 
 export type IssueLineInput = {
   itemId: string;
@@ -41,6 +44,8 @@ export async function issueTransfer(input: {
   notes?: string;
   /** When true, issuer is Pharmacy SOS fulfilling a C2C drug request. */
   asPharmacySos?: boolean;
+  /** Clinic→clinic transfer (expendable any clinic; pharmacy only from SOS). */
+  asClinicTransfer?: boolean;
   issuerClinicId?: string | null;
 }) {
   if (!input.lines.length) {
@@ -96,7 +101,35 @@ export async function issueTransfer(input: {
   }
   const locationById = Object.fromEntries(locations.map((l) => [l.id, l]));
 
-  if (input.asPharmacySos) {
+  let fromClinicId: string | null = null;
+
+  if (input.asClinicTransfer) {
+    if (!input.issuerClinicId) {
+      throw new Error("Clinic transfer requires an issuing clinic.");
+    }
+    if (request) {
+      throw new Error("Clinic transfers are not tied to logistics requests.");
+    }
+    const fromClinic = await prisma.clinic.findFirst({
+      where: { id: input.issuerClinicId, hospitalId: input.hospitalId },
+    });
+    if (!fromClinic) throw new Error("Source clinic not found.");
+    fromClinicId = fromClinic.id;
+
+    for (const loc of locations) {
+      if (loc.kind !== "CLINIC" || loc.clinicId !== fromClinic.id) {
+        throw new Error("Clinic transfer must pick from your clinic locations.");
+      }
+    }
+    for (const item of items) {
+      const allowed = clinicMayTransferItem({
+        item,
+        fromClinic,
+        toClinic: clinic,
+      });
+      if (!allowed.ok) throw new Error(allowed.error);
+    }
+  } else if (input.asPharmacySos) {
     if (request?.channel !== "PHARMACY_SOS") {
       throw new Error("Pharmacy SOS can only fulfill Pharmacy-channel requests.");
     }
@@ -113,6 +146,7 @@ export async function issueTransfer(input: {
         throw new Error("Pharmacy SOS C2C issues pharmacy items only.");
       }
     }
+    fromClinicId = input.issuerClinicId ?? locations[0]?.clinicId ?? null;
   } else {
     for (const loc of locations) {
       if (loc.kind !== "WAREHOUSE") {
@@ -165,11 +199,13 @@ export async function issueTransfer(input: {
     }
   }
 
-  const kind = input.asPharmacySos
-    ? "PHARMACY_C2C"
-    : request
-      ? "REQUEST_FULFILLMENT"
-      : "LOGISTICS_PUSH";
+  const kind = input.asClinicTransfer
+    ? "CLINIC_TRANSFER"
+    : input.asPharmacySos
+      ? "PHARMACY_C2C"
+      : request
+        ? "REQUEST_FULFILLMENT"
+        : "LOGISTICS_PUSH";
 
   return prisma.$transaction(async (tx) => {
     for (const line of input.lines) {
@@ -188,6 +224,7 @@ export async function issueTransfer(input: {
         kind,
         status: "ISSUED",
         requestId: request?.id ?? null,
+        fromClinicId,
         toClinicId: clinic.id,
         issuedById: input.actorId,
         notes: input.notes?.trim() || null,
@@ -203,6 +240,7 @@ export async function issueTransfer(input: {
       include: {
         lines: { include: { item: true, lot: true, fromLocation: true } },
         toClinic: true,
+        fromClinic: true,
       },
     });
 

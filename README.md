@@ -2,7 +2,7 @@
 
 Clinical supply warehouse management for hospitals and clinics. Central logistics stocks, holds, and replenishes clinics — with Pharmacy as source of supply (SOS) for drugs.
 
-This repository includes Phase 0–1 foundations plus a **Phase 2 ops-depth slice**: short/over receive, FEFO pick suggestions, clinic par / replenishment, and warehouse cycle count.
+This repository includes Phase 0–1 foundations plus **Phase 2 ops depth**: short/over receive, FEFO picks, par / replenishment, warehouse cycle count, printable packing slips, clinic↔clinic transfers, and lightweight PO/ASN receiving.
 
 ## Stack
 
@@ -67,6 +67,9 @@ Item fields on **Receive**, **Requests**, and logistics **Issue (push)** use a k
 2. **FEFO picks** → Issue → search gloves → lot list is earliest-expiry first (`GLV-NEAR-EXP` before longer-dated lot) with near-expiry warning.
 3. **Par / replenish** → Par / replenish → Ortho gloves/gauze below par → “Suggest push” opens Issue prefilled for push-enabled clinics.
 4. **Cycle count** → Cycle count → pick warehouse location + lot → enter counted qty → on-hand adjusts with `CYCLE_COUNT` audit.
+5. **PO / ASN** → PO / ASN → create or use seed `PO-2026-DEMO` → Receive against line (short/over OK).
+6. **Print slip** → Pick lists → Print slip (or Confirm receipt → Print slip).
+7. **Clinic transfer** (`clinic.ortho`) → Transfer out expendable to Med-Surg → Med-Surg/Ortho confirm path on destination; drugs only from `clinic.pharmacy`.
 
 ## Environment variables
 
@@ -102,7 +105,9 @@ For **Neon** or **Supabase**, paste the pooled/direct Postgres URL into `DATABAS
 - **SupplyRequest** + lines — clinic requests; channel `LOGISTICS` or `PHARMACY_SOS`
 - **Transfer** + lines — issue/push/C2C; `ISSUED` then `CONFIRMED` (clinic on-hand)
 - **ClinicParLevel** — per clinic+item par qty for replenishment
-- **AuditEvent** — receive (incl. short/over) / request / issue / confirm / cycle count
+- **InboundShipment** + lines — lightweight PO/ASN expected receipts
+- **Transfer** kinds include `CLINIC_TRANSFER`; printable slip at `/print/transfer/[id]`
+- **AuditEvent** — receive (incl. short/over) / request / issue / confirm / cycle count / inbound
 
 ## Auth choice
 
@@ -118,7 +123,7 @@ For **Neon** or **Supabase**, paste the pooled/direct Postgres URL into `DATABAS
 ## Out of scope (still)
 
 - SSO, MFA, barcode hardware, temperature logging/excursions
-- Full PO/ASN EDI, printable packing slips, clinic↔clinic beyond Pharmacy SOS C2C
+- Full PO/ASN EDI / vendor integrations (lightweight PO headers only)
 - Clinic cycle count (warehouse only in this Phase 2 slice)
 - Multi-warehouse / multi-hospital
 - Live Vercel deploy from this PR
